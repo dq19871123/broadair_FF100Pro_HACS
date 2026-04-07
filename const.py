@@ -28,7 +28,7 @@ CMD_RESET_COARSE_FILTER: Final = "9"
 
 # Defaults
 DEFAULT_SCAN_INTERVAL: Final = timedelta(seconds=60)
-FAN_SPEED_COUNT: Final = 6
+FAN_SPEED_COUNT: Final = 3
 
 # Config keys
 CONF_TOKEN: Final = "token"

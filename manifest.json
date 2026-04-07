@@ -4,8 +4,8 @@
   "codeowners": [],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/yourusername/ha-broadair",
+  "documentation": "https://github.com/dq19871123/broadair_FF100Pro_HACS",
   "iot_class": "cloud_polling",
   "requirements": ["aiohttp>=3.8.0"],
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

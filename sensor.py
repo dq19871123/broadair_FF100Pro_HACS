@@ -105,7 +105,7 @@ SENSOR_DESCRIPTIONS: tuple[BroadAirSensorEntityDescription, ...] = (
         icon="mdi:speedometer",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: get_int_value(data, FIELD_GEAR) or get_int_value(data, FIELD_RUNNING_GEAR),
-        attr_fn=lambda data: {"min_level": 1, "max_level": 6},
+        attr_fn=lambda data: {"min_level": 1, "max_level": 3},
     ),
     BroadAirSensorEntityDescription(
         key="fault_status",

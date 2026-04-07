@@ -342,16 +342,16 @@ class BroadAirApiClient:
 
         Args:
             device_id: Device GUID
-            speed: Speed level 1-6
+            speed: Speed level 1-3
 
         Returns:
             Updated status dictionary
 
         Raises:
-            ValueError: If speed is not between 1 and 6
+            ValueError: If speed is not between 1 and 3
         """
-        if not 1 <= speed <= 6:
-            raise ValueError(f"Speed must be between 1 and 6, got {speed}")
+        if not 1 <= speed <= 3:
+            raise ValueError(f"Speed must be between 1 and 3, got {speed}")
         return await self._request(
             ENDPOINT_CONTROL,
             {"eq_guid": device_id, "sjx": CMD_SET_SPEED, "cs": str(speed)},

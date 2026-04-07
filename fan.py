@@ -70,7 +70,7 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
             identifiers={(DOMAIN, self._device_id)},
             name=entry.data.get(CONF_DEVICE_NAME, "Broad Fresh Air"),
             manufacturer="Broad",
-            model=entry.data.get(CONF_DEVICE_MODEL, "FE6-Pro"),
+            model=entry.data.get(CONF_DEVICE_MODEL, "FF100-Pro"),
         )
 
         # Add MAC address if available
@@ -118,7 +118,7 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
 
         try:
             gear_int = int(gear)
-            # Convert 1-6 to percentage ( 33,  67,  100)
+            # Convert 1-3 to percentage ( 33,  67,  100)
             return round(gear_int * 100 / FAN_SPEED_COUNT)
         except (ValueError, TypeError):
             _LOGGER.warning("Invalid gear value: %s", gear)

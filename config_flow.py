@@ -153,7 +153,7 @@ class BroadAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_DEVICE_ID: device_id,
                     CONF_DEVICE_NAME: device_name,
                     CONF_DEVICE_MAC: device.get(DEVICE_FIELD_MAC, ""),
-                    CONF_DEVICE_MODEL: device.get(DEVICE_FIELD_MODEL, "FE6-Pro"),
+                    CONF_DEVICE_MODEL: device.get(DEVICE_FIELD_MODEL, "FF100-Pro"),
                 },
             )
 
