@@ -26,8 +26,8 @@ from .coordinator import BroadAirCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Preset modes for gear 1-6
-PRESET_MODES = ["1", "2", "3", "4", "5", "6"]
+# Preset modes for gear 1-3
+PRESET_MODES = ["1", "2", "3"]
 
 
 async def async_setup_entry(
@@ -87,7 +87,7 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
 
     @property
     def preset_mode(self) -> str | None:
-        """Return the current preset mode (gear 1-6)."""
+        """Return the current preset mode (gear 1-3)."""
         if self.coordinator.data is None:
             return None
 
@@ -118,7 +118,7 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
 
         try:
             gear_int = int(gear)
-            # Convert 1-6 to percentage (17, 33, 50, 67, 83, 100)
+            # Convert 1-6 to percentage ( 33,  67,  100)
             return round(gear_int * 100 / FAN_SPEED_COUNT)
         except (ValueError, TypeError):
             _LOGGER.warning("Invalid gear value: %s", gear)
@@ -147,7 +147,7 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
             await self.coordinator.client.set_speed(self._device_id, speed)
         # If percentage specified, convert to gear and set
         elif percentage is not None and percentage > 0:
-            speed = max(1, min(6, round(percentage * FAN_SPEED_COUNT / 100)))
+            speed = max(1, min(3, round(percentage * FAN_SPEED_COUNT / 100)))
             await self.coordinator.client.set_speed(self._device_id, speed)
         # Otherwise, device remembers its last gear, no need to set it
 
@@ -169,8 +169,8 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
             await self.async_turn_off()
             return
 
-        # Convert percentage to gear 1-6
-        speed = max(1, min(6, round(percentage * FAN_SPEED_COUNT / 100)))
+        # Convert percentage to gear 1-3
+        speed = max(1, min(3, round(percentage * FAN_SPEED_COUNT / 100)))
 
         _LOGGER.debug("Converted percentage %d to gear %d", percentage, speed)
 
@@ -182,7 +182,7 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """Set the preset mode (gear 1-6)."""
+        """Set the preset mode (gear 1-3)."""
         _LOGGER.debug("Setting fan %s preset mode to %s", self._device_id, preset_mode)
 
         if preset_mode not in PRESET_MODES:
