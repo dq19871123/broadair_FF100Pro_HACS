@@ -1,6 +1,6 @@
 # This project is forked from bdcrrbb/broadair_FE6Pro_HACS (https://github.com/bdcrrbb/broadair_FE6Pro_HACS) 
 
-I just modified it slightly to work with the FF-100 Pro.
+I just modified it slightly to work with the FF100-Pro.
 
 # Broad Fresh Air Integration for Home Assistant
 
