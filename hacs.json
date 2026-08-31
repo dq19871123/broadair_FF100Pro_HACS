@@ -1,5 +1,6 @@
 {
-  "name": "Broad Fresh Air",
+  "name": "Broad Fresh Air (FF100-Pro)",
   "render_readme": true,
+  "content_in_root": true,
   "homeassistant": "2024.1.0"
 }

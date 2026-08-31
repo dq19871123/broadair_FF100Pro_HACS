@@ -1,207 +1,116 @@
-# This project is forked from bdcrrbb/broadair_FE6Pro_HACS (https://github.com/bdcrrbb/broadair_FE6Pro_HACS) 
-
-I just modified it slightly to work with the FF100-Pro.
-
-# Broad Fresh Air Integration for Home Assistant
+# 远大新风肺保 (FF100-Pro) Home Assistant 自定义集成
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 
-Home Assistant custom component for controlling Broad (远大) fresh air units via the cloud API.
+本集成是专为 **远大新风肺保 (Broad AirPro Fresh FF100-Pro / FF100 系列)** 开发的 Home Assistant 自定义组件，通过远大官方 IoT 云端 API 实现对新风设备的完整状态监控与智能控制。
 
-## Supported Devices
+---
 
-- Broad FE6-Pro (新风肺保FE6)
-- Other Broad fresh air units using the same cloud API (untested)
+## 📱 支持机型
 
-## Features
+- **远大新风肺保 FF100-Pro** (推荐)
+- 远大新风肺保 FF100 / FF100-PLUS 系列
+- *注：FE6 系列（6 档风速）请使用原版 FE6 插件。*
 
-### Controls
-- **Power**: Turn the unit on/off
-- **Fan Speed**: 6-speed fan control (preset modes 1-6)
-- **Sleep Mode**: Toggle sleep mode on/off
-- **Reset HEPA Filter**: Reset HEPA filter used time counter (after replacing filter)
-- **Reset Primary Filter**: Reset primary/coarse filter used time counter (after cleaning)
+---
 
-### Sensors
-- **Air Volume**: Current airflow rate (m³/h)
-- **Speed Level**: Current speed setting (1-6)
-- **HEPA Filter Life**: Remaining filter life percentage
-- **HEPA Filter Used Time**: Hours the HEPA filter has been used
-- **Coarse Filter Used Time**: Hours the coarse filter has been used
-- **Fault Status**: Current fault code and description
+## ✨ 功能特性与实体清单
 
-### Optional Sensors (if modules installed)
-- **CO2**: CO2 concentration (ppm)
-- **PM2.5**: Particulate matter 2.5 (µg/m³)
-- **PM10**: Particulate matter 10 (µg/m³)
-- **Room Temperature**: Indoor temperature (°C)
+### 1. 风扇控制实体 (`fan.<设备名称>`)
+- **开关机控制**：支持远程开机与关机（`sjx: 3` / `sjx: 2`）。
+- **3 档风速调节**：支持 1 档、2 档、3 档无缝调速（`sjx: 4`，对应 HA 百分比 33%、67%、100%）。
+- **预设模式联动**：支持 `1`、`2`、`3` 档及 `sleep`（睡眠档）预设模式。
 
-## Installation
+### 2. 功能开关实体 (`switch.<设备名称>_*`)
+- **睡眠模式开关** (`switch.<设备名称>_sleep_mode`)：一键开启或关闭极静音睡眠档（`sjx: 5`）。
+- **自动模式开关** (`switch.<设备名称>_auto_mode`)：开启或关闭设备根据环境指标自动调速（`sjx: 18`）。
+- **室内净化模式** (`switch.<设备名称>_indoor_purification`)：开启或关闭室内空气循环净化模式（`sjx: 19`，硬件支持时自动呈现）。
 
-### HACS (Recommended)
+### 3. 滤网清零按钮 (`button.<设备名称>_*`)
+- **重置 HEPA 滤芯计时** (`button.<设备名称>_reset_hepa_filter`)：更换全新 HEPA 高效滤芯后点击清零已用计时（`sjx: 8`）。
+- **重置粗效滤网计时** (`button.<设备名称>_reset_coarse_filter`)：清洗装回粗效滤网后点击清零已用计时（`sjx: 9`）。
 
-1. Open HACS in Home Assistant
-2. Click the three dots in the top right corner
-3. Select "Custom repositories"
-4. Add this repository URL and select "Integration" as the category
-5. Click "Add"
-6. Search for "Broad Fresh Air" and install it
-7. Restart Home Assistant
+### 4. 二进制状态传感器 (`binary_sensor.<设备名称>_*`)
+- **故障报警监测** (`binary_sensor.<设备名称>_problem`)：当设备自检到故障时自动变为 `on`，方便用于 HA 异常通知自动化。
+- **云端在线状态** (`binary_sensor.<设备名称>_connectivity`)：实时反馈设备与云端的连接连通性。
 
-### Manual Installation
+### 5. 遥测与滤网寿命传感器 (`sensor.<设备名称>_*`)
+- **实时风量** (`sensor.<设备名称>_air_volume`)：出风量监测（单位：$m^3/h$）。
+- **风速档位** (`sensor.<设备名称>_speed_level`)：当前运行档位（1~3 档，睡眠模式显示 0 档）。
+- **故障诊断状态** (`sensor.<设备名称>_fault_status`)：实时故障解析文本（正常显示 `Normal`，故障时显示具体原因如 `PM2.5故障`）。
+- **HEPA 滤芯剩余寿命** (`sensor.<设备名称>_hepa_filter_life`)：高效滤网剩余寿命百分比（%）。
+- **HEPA 滤芯已用时长** (`sensor.<设备名称>_hepa_filter_used`)：高效滤网累计工作时长（小时）。
+- **粗效滤网剩余寿命** (`sensor.<设备名称>_coarse_filter_life`)：初效/粗效滤网清洗周期剩余百分比（%）。
+- **粗效滤网已用时长** (`sensor.<设备名称>_coarse_filter_used`)：初效滤网累计工作时长（小时）。
+- **静电除尘器寿命** (`sensor.<设备名称>_duster_filter_life`)：静电除尘器剩余寿命百分比（选配时自动激活）。
 
-1. Download the `broadair` folder from this repository
-2. Copy it to your `config/custom_components/` directory:
+### 6. 环境空气质量传感器（根据硬件选配件动态适配）
+- **PM2.5 激光颗粒浓度** (`sensor.<设备名称>_pm25`)：实时室内粉尘浓度（$\mu g/m^3$，附带空气质量优良等级评定）。
+- **二氧化碳浓度** (`sensor.<设备名称>_co2`)：CO2 浓度值（ppm）。
+- **室内温度** (`sensor.<设备名称>_temperature`)：室内温度检测（℃，已自动除以 10 修正）。
+
+---
+
+## 🛠️ 安装方法
+
+### 方法一：通过 HACS 商店安装（推荐）
+
+1. 打开 Home Assistant 的 **HACS** 商店。
+2. 点击右上角的三个点，选择 **“自定义存储库” (Custom repositories)**。
+3. 输入本仓库的 GitHub URL，类别选择 **“集成” (Integration)**，点击 **“添加”**。
+4. 在 HACS 中搜索 **“Broad Fresh Air (FF100-Pro)”** 并点击安装。
+5. **重启 Home Assistant**。
+
+### 方法二：手动安装
+
+1. 下载本仓库源码。
+2. 将项目目录重命名为 `broadair`，拷贝至 Home Assistant 的配置目录中：
+   ```text
+   config/custom_components/broadair/
    ```
-   config/
-   └── custom_components/
-       └── broadair/
-           ├── __init__.py
-           ├── manifest.json
-           ├── config_flow.py
-           ├── const.py
-           ├── coordinator.py
-           ├── api.py
-           ├── fan.py
-           ├── switch.py
-           ├── sensor.py
-           └── translations/
-   ```
-3. Restart Home Assistant
+3. **重启 Home Assistant**。
 
-## Configuration
+---
 
-### Easy Setup (Recommended)
+## ⚙️ 配置与接入
 
-1. Go to **Settings** → **Devices & Services**
-2. Click **+ Add Integration**
-3. Search for "Broad Fresh Air"
-4. Enter your phone number and password (same as the mobile app)
-5. Select your device from the list
-6. Done!
+1. 在 Home Assistant 中进入 **“设置”** → **“设备与服务”** → **“添加集成”**。
+2. 搜索并选择 **“远大新风肺保 (FF100-Pro)”**（Broad Fresh Air）。
+3. 输入您的远大空气管家 **手机号** 与 **密码**。
+4. 在弹出的设备列表中选择您要接入的新风肺保设备，点击完成。
 
-The integration will automatically handle login and token refresh.
+> [!NOTE]
+> 集成内置了 Token 自动重登机制。若会话长期过期，HA 会提示“重新认证”，只需重新输入密码即可无缝恢复。
 
-## Entities
+---
 
-### Fan Entity
-| Entity ID | Description |
-|-----------|-------------|
-| `fan.<device_name>` | Main control - power on/off, 6 speed levels |
+## 📋 云端控制协议参考 (FF100-Pro DTU)
 
-### Switch Entities
-| Entity ID | Description |
-|-----------|-------------|
-| `switch.<device_name>_sleep_mode` | Toggle sleep mode |
+| 控制指令代码 (`sjx`) | 附加参数 (`cs`) | 对应操作说明 |
+| :---: | :---: | :--- |
+| `1` | `""` | 实时同步并查询设备当前状态 |
+| `2` | `""` | 关机 |
+| `3` | `""` | 开机 |
+| `4` | `"1"` / `"2"` / `"3"` | 设定风速档位（1~3 档） |
+| `5` | `"1"` / `"0"` | 开启 / 关闭睡眠模式 |
+| `8` | `"1"` | 高效 HEPA 滤芯已用计时清零 |
+| `9` | `"1"` | 初效粗效滤网已用计时清零 |
+| `18` | `"1"` / `"0"` | 开启 / 关闭自动调节模式 |
+| `19` | `"1"` / `"0"` | 开启 / 关闭室内净化循环送风模式 |
 
-### Button Entities
-| Entity ID | Description |
-|-----------|-------------|
-| `button.<device_name>_reset_hepa_filter` | Reset HEPA filter used time |
-| `button.<device_name>_reset_primary_filter` | Reset primary filter used time |
+---
 
-### Sensor Entities
-| Entity ID | Description | Unit |
-|-----------|-------------|------|
-| `sensor.<device_name>_air_volume` | Current air flow | m³/h |
-| `sensor.<device_name>_speed_level` | Current speed (1-6) | - |
-| `sensor.<device_name>_fault_status` | Fault status | - |
-| `sensor.<device_name>_hepa_filter_life` | HEPA filter remaining | % |
-| `sensor.<device_name>_hepa_filter_used` | HEPA filter used time | hours |
-| `sensor.<device_name>_coarse_filter_used` | Coarse filter used time | hours |
-| `sensor.<device_name>_co2` | CO2 level (if module installed) | ppm |
-| `sensor.<device_name>_pm25` | PM2.5 (if module installed) | µg/m³ |
-| `sensor.<device_name>_pm10` | PM10 (if module installed) | µg/m³ |
-| `sensor.<device_name>_temperature` | Room temp (if module installed) | °C |
+## ❤️ 特别致谢 (Acknowledgements)
 
-## Session Management
+- 本项目基于 [bdcrrbb/broadair_FE6Pro_HACS](https://github.com/bdcrrbb/broadair_FE6Pro_HACS) 进行二次开发与 FF100-Pro 专属适配，由衷感谢原作者在架构与协议逆向上的开源贡献！
+- 感谢开源社区所有为智能家居生态做出贡献的开发者。
 
-The integration automatically handles session tokens. If a token expires, the integration will automatically re-authenticate using your stored credentials.
+---
 
-If automatic re-authentication fails:
+## 📄 免责声明 (Disclaimer)
 
-1. The integration will show an authentication error
-2. Go to **Settings** → **Devices & Services** → **Broad Fresh Air**
-3. Click **Reconfigure** and enter your credentials again
+本集成是独立的开源项目，非远大科技集团（Broad Group）官方出品，亦未获得其官方赞助或背书。请在遵守当地法律法规的前提下合理使用。
 
-## Troubleshooting
+## 📜 开源协议
 
-### "Invalid phone number or password"
-
-- Make sure you're using the same credentials as the mobile app
-- Check that your phone number includes country code if required
-- Try logging into the mobile app to verify credentials work
-
-### "Unable to connect"
-
-- Check your Home Assistant's internet connection
-- Verify the Broad cloud service is accessible
-- Check if your firewall is blocking outgoing connections to `broadair.remotcon.mobi:8201`
-
-### Device shows unavailable
-
-- The device may be offline (check `Online` status)
-- Try power cycling the fresh air unit
-- Check the device status in the official app
-
-### Air quality sensors show unavailable
-
-- These sensors require optional modules (CO2, dust, temperature)
-- If the module is not installed, the sensor will be unavailable
-- Check `*_MODULE_ACCESSORIES` fields in the API response
-
-## API Reference
-
-For developers interested in the API:
-
-### Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/System/Login` | POST | User login |
-| `/api/Equipment/GetEquipments` | POST | Get device list |
-| `/api/Equipment/SetFreshLung` | POST | Control device / get status |
-
-### Control Commands (sjx parameter)
-
-| sjx | cs | Action |
-|-----|-----|--------|
-| 1 | - | Poll status |
-| 2 | - | Power off |
-| 3 | - | Power on |
-| 4 | 1-6 | Set fan speed |
-| 5 | 0/1 | Sleep mode off/on |
-| 8 | 1 | Reset HEPA filter timer |
-| 9 | 1 | Reset primary filter timer |
-
-### Status Response Fields
-
-| Field | Description |
-|-------|-------------|
-| `FB_ON` | Power state (1=on, 0=off) |
-| `GEAR_POSITION` | Current gear setting |
-| `RUNNING_GEAR` | Actual running gear |
-| `FB_SLEEPMODEL_ON` | Sleep mode state |
-| `FB_AUTOMODEL_ON` | Auto mode state |
-| `AIR_VOLUME` | Air volume (m³/h) |
-| `FAULT` | Fault code (00=OK) |
-| `EFFICIENT_LIFE_CYCLE` | HEPA filter total life |
-| `EFFICIENT_USED_TIME` | HEPA filter used hours |
-| `COARSE_USED_TIME` | Coarse filter used hours |
-| `CO2_CONCENTRATION` | CO2 level |
-| `PM_2_5` | PM2.5 level |
-| `PM_10` | PM10 level |
-| `ROOM_TEMPERATURE` | Room temperature |
-| `*_MODULE_ACCESSORIES` | Module installation status |
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues or pull requests.
-
-## Disclaimer
-
-This custom component is created using Claude. This integration is not affiliated with or endorsed by Broad Group (远大集团). Use at your own risk.
-
-## License
-
-MIT License
+本项目采用 [MIT License](file:///C:/Data/Sourcecode/broadair_FF100Pro_HACS/LICENSE) 授权许可。

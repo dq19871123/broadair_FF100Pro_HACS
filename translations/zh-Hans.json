@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "远大新风",
-        "description": "请输入您的远大新风账号和密码（与手机App相同）。",
+        "title": "远大新风肺保 (FF100-Pro)",
+        "description": "请输入您的远大空气管家账号和密码（与手机App相同）。",
         "data": {
           "account": "手机号",
           "password": "密码"
@@ -11,7 +11,7 @@
       },
       "device": {
         "title": "选择设备",
-        "description": "选择要添加的新风机。",
+        "description": "选择要添加的新风肺保设备。",
         "data": {
           "device_id": "设备"
         }
@@ -38,51 +38,68 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "problem": {
+        "name": "故障报警"
+      },
+      "connectivity": {
+        "name": "在线状态"
+      }
+    },
     "button": {
       "reset_hepa_filter": {
-        "name": "重置HEPA滤芯计时"
+        "name": "重置HEPA高效滤芯计时"
       },
       "reset_coarse_filter": {
-        "name": "重置初效滤芯计时"
+        "name": "重置粗效滤网计时"
       }
     },
     "fan": {
       "broadair": {
-        "name": "新风机"
+        "name": "新风肺保"
       }
     },
     "switch": {
       "sleep_mode": {
         "name": "睡眠模式"
+      },
+      "auto_mode": {
+        "name": "自动模式"
+      },
+      "indoor_purification": {
+        "name": "室内净化模式"
       }
     },
     "sensor": {
       "air_volume": {
-        "name": "风量"
+        "name": "实时风量"
       },
       "speed_level": {
-        "name": "风力档位"
+        "name": "风速档位"
       },
       "fault_status": {
         "name": "故障状态"
       },
       "hepa_filter_life": {
-        "name": "HEPA滤芯寿命"
+        "name": "HEPA滤芯剩余寿命"
       },
       "hepa_filter_used": {
         "name": "HEPA滤芯已用时间"
       },
+      "coarse_filter_life": {
+        "name": "粗效滤网剩余寿命"
+      },
       "coarse_filter_used": {
-        "name": "粗滤芯已用时间"
+        "name": "粗效滤网已用时间"
+      },
+      "duster_filter_life": {
+        "name": "静电除尘器寿命"
       },
       "co2": {
         "name": "二氧化碳浓度"
       },
       "pm25": {
-        "name": "PM2.5"
-      },
-      "pm10": {
-        "name": "PM10"
+        "name": "PM2.5浓度"
       },
       "temperature": {
         "name": "室内温度"

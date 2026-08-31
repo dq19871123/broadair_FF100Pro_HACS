@@ -1,4 +1,11 @@
-"""API client for Broad Fresh Air."""
+"""API 客户端模块 - 负责与远大云端 HTTP 接口通信.
+
+本模块封装了与远大 IoT 云平台的完整交互逻辑：
+- 动态签名计算 (MD5(AppToken + Nonce + Timestamp))
+- 账号密码登录与会话 Token 获取
+- Token 过期自动重新认证与重试机制 (处理 600/700/800 状态码)
+- 针对 FF100-Pro 设备的状态查询、档位调节、模式切换与滤网重置
+"""
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +21,8 @@ import aiohttp
 from .const import (
     API_BASE_URL,
     APP_TOKEN,
+    CMD_AUTO_MODE,
+    CMD_INDOOR_PURIFICATION,
     CMD_POLL,
     CMD_POWER_OFF,
     CMD_POWER_ON,
@@ -21,46 +30,54 @@ from .const import (
     CMD_RESET_HEPA_FILTER,
     CMD_SET_SPEED,
     CMD_SLEEP_MODE,
+    ENDPOINT_CACHE,
     ENDPOINT_CONTROL,
     ENDPOINT_DEVICES,
     ENDPOINT_LOGIN,
+    FAN_SPEED_COUNT,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class BroadAirApiError(Exception):
-    """Base exception for BroadAir API errors."""
+    """远大 API 通信基类异常."""
 
 
 class BroadAirAuthError(BroadAirApiError):
-    """Authentication error - token invalid or expired."""
+    """身份认证异常 (Token 失效、过期或账号密码错误)."""
 
 
 class BroadAirConnectionError(BroadAirApiError):
-    """Connection error."""
+    """网络连接异常 (超时或无法连接到云端服务器)."""
 
 
 def _md5(s: str) -> str:
-    """Calculate MD5 hash of string."""
+    """计算字符串的 MD5 哈希值 (小写 32 位十六进制)."""
     return hashlib.md5(s.encode()).hexdigest()
 
 
 def _generate_nonce() -> str:
-    """Generate 6-digit random nonce."""
+    """生成 6 位随机数字字符串作为 Nonce."""
     return str(random.randint(100000, 999999))
 
 
 def _generate_sign(nonce: str, timestamp: int) -> str:
-    """
-    Generate Sign using formula: MD5(AppToken + Nonce + Timestamp)
+    """计算登录接口的请求签名.
+
+    计算规则来自官方 App 逆向工程：
+    Sign = MD5(APP_TOKEN + Nonce + Timestamp)
     """
     data = f"{APP_TOKEN}{nonce}{timestamp}"
     return _md5(data)
 
 
 def _create_ssl_context() -> ssl.SSLContext:
-    """Create SSL context that accepts self-signed certificates."""
+    """创建自定义 SSL 上下文.
+
+    远大云端服务器 (broadair.remotcon.mobi:8201) 使用的 SSL 证书链在部分 Linux 环境下
+    可能无法通过系统 CA 严格校验，因此关闭证书主机名校验以保障通信稳定性。
+    """
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
@@ -72,35 +89,36 @@ async def async_login(
     password: str,
     session: aiohttp.ClientSession | None = None,
 ) -> dict[str, Any]:
-    """
-    Login to Broad Fresh Air API.
+    """通过手机号与密码登录远大云端接口.
 
     Args:
-        account: Phone number
-        password: Password
-        session: Optional aiohttp session
+        account: 注册手机号
+        password: 账号密码
+        session: 可选的 aiohttp 客户端会话
 
     Returns:
-        Login response data including session token
+        包含用户身份 Token 及用户信息的字典对象 (响应体中的 Data 字段)
 
     Raises:
-        BroadAirAuthError: If login fails
-        BroadAirConnectionError: If connection fails
+        BroadAirAuthError: 账号或密码错误
+        BroadAirConnectionError: 网络连接超时或失败
     """
     timestamp = int(time.time())
     nonce = _generate_nonce()
     sign = _generate_sign(nonce, timestamp)
 
+    # 模拟官方 uni-app 客户端请求头
     headers = {
         "Content-Type": "application/json",
         "language": "cn",
-        "token": "1",  # "1" for login requests
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Html5Plus/1.0 uni-app",
+        "token": "1",  # 登录接口固定传 "1"
+        "User-Agent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) uni-app",
         "Accept": "*/*",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
     }
 
+    # 登录请求报文结构
     payload = {
         "Token": APP_TOKEN,
         "Timestamp": timestamp,
@@ -111,7 +129,7 @@ async def async_login(
     }
 
     url = f"{API_BASE_URL}{ENDPOINT_LOGIN}"
-    _LOGGER.debug("Login request to %s for account %s", url, account)
+    _LOGGER.debug("向云端发起登录请求: %s (账号: %s)", url, account)
 
     own_session = session is None
     if own_session:
@@ -123,26 +141,27 @@ async def async_login(
             async with session.post(url, json=payload, headers=headers, ssl=_create_ssl_context()) as resp:
                 result = await resp.json()
 
-                _LOGGER.debug("Login response code: %s", result.get("Code"))
+                _LOGGER.debug("登录响应状态码: %s", result.get("Code"))
 
                 code = result.get("Code")
                 if code != 200:
-                    msg = result.get("Message", "Unknown error")
-                    raise BroadAirAuthError(f"Login failed (code {code}): {msg}")
+                    msg = result.get("Message", result.get("DetailMessage", "未知错误"))
+                    raise BroadAirAuthError(f"登录失败 (Code: {code}): {msg}")
 
+                # 返回登录成功后的 Data 对象 (包含 Token, ID, Account 等)
                 return result.get("Data", {})
 
     except asyncio.TimeoutError as err:
-        raise BroadAirConnectionError("Login request timeout") from err
+        raise BroadAirConnectionError("登录请求响应超时") from err
     except aiohttp.ClientError as err:
-        raise BroadAirConnectionError(f"Connection error: {err}") from err
+        raise BroadAirConnectionError(f"登录网络连接失败: {err}") from err
     finally:
         if own_session and session:
             await session.close()
 
 
 class BroadAirApiClient:
-    """API client for Broad Fresh Air units."""
+    """远大新风肺保 API 客户端管理器."""
 
     def __init__(
         self,
@@ -151,13 +170,13 @@ class BroadAirApiClient:
         account: str | None = None,
         password: str | None = None,
     ) -> None:
-        """Initialize the API client.
+        """初始化 API 客户端.
 
         Args:
-            token: Session token from Data.Token after login
-            session: Optional aiohttp session (recommended to use HA's session)
-            account: Optional account for re-authentication
-            password: Optional password for re-authentication
+            token: 登录成功后获得的会话 Token
+            session: 传入的 aiohttp 会话 (若无则内部自建)
+            account: 用于 Token 过期时自动重登的账号
+            password: 用于 Token 过期时自动重登的密码
         """
         self._token = token
         self._session = session
@@ -168,29 +187,29 @@ class BroadAirApiClient:
 
     @property
     def token(self) -> str:
-        """Return current token."""
+        """获取当前使用的会话 Token."""
         return self._token
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session."""
+        """获取或创建内部使用的 aiohttp.ClientSession 实例."""
         if self._session is None:
             connector = aiohttp.TCPConnector(ssl=self._ssl_context)
             self._session = aiohttp.ClientSession(connector=connector)
         return self._session
 
     async def close(self) -> None:
-        """Close the session if we created it."""
+        """关闭客户端自建的网络会话."""
         if self._own_session and self._session:
             await self._session.close()
             self._session = None
 
     def _headers(self) -> dict[str, str]:
-        """Build request headers."""
+        """构造常规业务请求头 (携带会话 token)."""
         return {
             "Content-Type": "application/json",
-            "language": "en",
+            "language": "cn",
             "token": self._token,
-            "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) uni-app",
             "Accept": "application/json",
             "Accept-Encoding": "gzip",
             "Connection": "keep-alive",
@@ -203,26 +222,26 @@ class BroadAirApiClient:
         timeout: int = 30,
         retry_auth: bool = True,
     ) -> dict[str, Any]:
-        """Make API request.
+        """向云端发送 POST 请求，并处理鉴权失败后的自动刷新重试.
 
         Args:
-            endpoint: API endpoint path
-            data: Request body data
-            timeout: Request timeout in seconds
-            retry_auth: Whether to retry with token refresh on auth failure
+            endpoint: API 路径
+            data: 请求体参数字典
+            timeout: 超时时间 (秒)
+            retry_auth: 鉴权失败时是否尝试重登刷新 Token 并重发请求
 
         Returns:
-            Response Data field
+            响应体中的 Data 字段数据
 
         Raises:
-            BroadAirAuthError: If authentication fails
-            BroadAirConnectionError: If connection fails
-            BroadAirApiError: For other API errors
+            BroadAirAuthError: 鉴权失败且无法恢复
+            BroadAirConnectionError: 网络超时或中断
+            BroadAirApiError: 业务逻辑错误
         """
         session = await self._get_session()
         url = f"{API_BASE_URL}{endpoint}"
 
-        _LOGGER.debug("API request to %s: %s", endpoint, data)
+        _LOGGER.debug("发送 API 请求 [%s]: %s", endpoint, data)
 
         try:
             async with asyncio.timeout(timeout):
@@ -234,73 +253,68 @@ class BroadAirApiClient:
                 ) as resp:
                     result = await resp.json()
 
-                    _LOGGER.debug("API response: %s", result)
+                    _LOGGER.debug("收到 API 响应 [%s]: %s", endpoint, result)
 
                     code = result.get("Code")
                     if code != 200:
-                        msg = result.get("Message", result.get("Msg", "Unknown error"))
-                        
-                        # Check if it's an auth error (code 800 = token验证失败)
+                        # 兼容部分接口使用 Head.Code 返回状态码的设计
+                        head_code = result.get("Head", {}).get("Code") if isinstance(result.get("Head"), dict) else None
+                        if head_code == 200:
+                            return result.get("Data", {})
+
+                        msg = result.get("Message", result.get("Msg", result.get("DetailMessage", "未知错误")))
+
+                        # 远大接口定义的 Token 失效状态码：401, 403, 600(未登录), 700(Token需更新), 800(其他设备登录)
                         is_auth_error = (
-                            code in (401, 403, 800, 10001) or 
-                            "token" in msg.lower() or 
-                            "验证失败" in msg
+                            code in (401, 403, 600, 700, 800, 10001)
+                            or "token" in str(msg).lower()
+                            or "验证失败" in str(msg)
+                            or "过期" in str(msg)
                         )
-                        
+
                         if is_auth_error:
-                            # Try to refresh token if we have credentials and haven't retried yet
                             if retry_auth and self._account and self._password:
-                                _LOGGER.info("Token expired (code %s: %s), attempting to refresh...", code, msg)
+                                _LOGGER.info("Token 已过期或失效 (Code: %s, Msg: %s)，正在尝试自动重新登录...", code, msg)
                                 try:
                                     await self.refresh_token()
-                                    _LOGGER.info("Token refreshed successfully, retrying request")
-                                    # Retry the request with new token (but don't retry auth again)
+                                    _LOGGER.info("Token 刷新成功，正在重试之前的请求...")
                                     return await self._request(endpoint, data, timeout, retry_auth=False)
                                 except BroadAirAuthError as refresh_err:
-                                    _LOGGER.error("Token refresh failed: %s", refresh_err)
+                                    _LOGGER.error("Token 自动刷新失败: %s", refresh_err)
                                     raise BroadAirAuthError(
-                                        f"Authentication failed and token refresh failed: {msg}"
+                                        f"鉴权失败且自动重登无效: {msg}"
                                     ) from refresh_err
-                            
-                            raise BroadAirAuthError(
-                                f"Authentication failed (code {code}): {msg}"
-                            )
-                        raise BroadAirApiError(f"API error {code}: {msg}")
+
+                            raise BroadAirAuthError(f"API 鉴权失败 (Code: {code}): {msg}")
+                        raise BroadAirApiError(f"API 业务请求失败 (Code: {code}): {msg}")
 
                     return result.get("Data", {})
 
         except asyncio.TimeoutError as err:
-            raise BroadAirConnectionError(f"Request timeout: {url}") from err
+            raise BroadAirConnectionError(f"请求超时: {url}") from err
         except aiohttp.ClientError as err:
-            raise BroadAirConnectionError(f"Connection error: {err}") from err
+            raise BroadAirConnectionError(f"网络连接异常: {err}") from err
 
     async def refresh_token(self) -> str:
-        """Refresh the session token by re-authenticating.
-
-        Returns:
-            New session token
-
-        Raises:
-            BroadAirAuthError: If credentials are not available or login fails
-        """
+        """重新执行登录流程以刷新会话 Token."""
         if not self._account or not self._password:
-            raise BroadAirAuthError("Cannot refresh token: credentials not available")
+            raise BroadAirAuthError("无法刷新 Token：未提供账号密码凭据")
 
-        _LOGGER.info("Refreshing token for account %s", self._account)
+        _LOGGER.info("正在为账号 %s 重新申请 Token", self._account)
 
         login_data = await async_login(self._account, self._password, self._session)
         self._token = login_data.get("Token", "")
 
         if not self._token:
-            raise BroadAirAuthError("Login succeeded but no token returned")
+            raise BroadAirAuthError("登录成功但返回的 Token 为空")
 
         return self._token
 
     async def get_devices(self) -> list[dict[str, Any]]:
-        """Get list of devices.
+        """获取用户绑定的全部设备列表.
 
         Returns:
-            List of device dictionaries with ID, MAC, Name, EquipmentMode, Online
+            设备信息列表 (包含 ID, MAC, Name, EquipmentMode, Online 等字段)
         """
         result = await self._request(ENDPOINT_DEVICES, {"GroupName": ""})
         if isinstance(result, list):
@@ -308,28 +322,36 @@ class BroadAirApiClient:
         return []
 
     async def get_status(self, device_id: str) -> dict[str, Any]:
-        """Get device status.
+        """获取设备的实时运行状态与传感器数据.
+
+        在官方 App 机制中：
+        1. 优先调用 SetFreshLung (sjx="1", cs="") 向硬件下发实时状态同步指令；
+        2. 若下发失败则降级调用 GetFreshLung 获取云端最近一次缓存数据。
 
         Args:
-            device_id: Device GUID (eq_guid)
+            device_id: 设备唯一标识 GUID (eq_guid)
 
         Returns:
-            Status dictionary with FB_ON, GEAR_POSITION, AIR_VOLUME, etc.
+            包含设备开关、档位、风量、传感器数值与滤网寿命的状态字典
         """
-        return await self._request(
-            ENDPOINT_CONTROL,
-            {"eq_guid": device_id, "sjx": CMD_POLL, "cs": ""},
-        )
+        try:
+            return await self._request(
+                ENDPOINT_CONTROL,
+                {"eq_guid": device_id, "sjx": CMD_POLL, "cs": ""},
+            )
+        except BroadAirApiError as err:
+            _LOGGER.debug("通过 SetFreshLung 轮询状态失败 (%s)，降级尝试 GetFreshLung 缓存接口", err)
+            return await self._request(
+                ENDPOINT_CACHE,
+                {"eq_guid": device_id},
+            )
 
     async def set_power(self, device_id: str, on: bool) -> dict[str, Any]:
-        """Set device power state.
+        """控制设备开关机 (sjx: 3=开机, 2=关机).
 
         Args:
-            device_id: Device GUID
-            on: True to power on, False to power off
-
-        Returns:
-            Updated status dictionary
+            device_id: 设备唯一标识 GUID
+            on: True 为开机，False 为关机
         """
         cmd = CMD_POWER_ON if on else CMD_POWER_OFF
         return await self._request(
@@ -338,48 +360,56 @@ class BroadAirApiClient:
         )
 
     async def set_speed(self, device_id: str, speed: int) -> dict[str, Any]:
-        """Set fan speed.
+        """设定风速档位 (FF100-Pro 支持 1 到 3 档, sjx: 4).
 
         Args:
-            device_id: Device GUID
-            speed: Speed level 1-3
-
-        Returns:
-            Updated status dictionary
+            device_id: 设备唯一标识 GUID
+            speed: 目标风速 (1, 2, 3)
 
         Raises:
-            ValueError: If speed is not between 1 and 3
+            ValueError: 当档位超出 1~3 范围时抛出
         """
-        if not 1 <= speed <= 3:
-            raise ValueError(f"Speed must be between 1 and 3, got {speed}")
+        if not 1 <= speed <= FAN_SPEED_COUNT:
+            raise ValueError(f"FF100-Pro 风速档位必须在 1 到 {FAN_SPEED_COUNT} 之间，传入值为: {speed}")
         return await self._request(
             ENDPOINT_CONTROL,
             {"eq_guid": device_id, "sjx": CMD_SET_SPEED, "cs": str(speed)},
         )
 
     async def set_sleep_mode(self, device_id: str, on: bool) -> dict[str, Any]:
-        """Set sleep mode.
+        """开启或关闭睡眠模式 (sjx: 5, cs: 1=开启, 0=关闭).
 
-        Args:
-            device_id: Device GUID
-            on: True to enable sleep mode, False to disable
-
-        Returns:
-            Updated status dictionary
+        开启睡眠模式后，设备以极低静音转速运行，风速显示为睡眠档。
         """
         return await self._request(
             ENDPOINT_CONTROL,
             {"eq_guid": device_id, "sjx": CMD_SLEEP_MODE, "cs": "1" if on else "0"},
         )
 
+    async def set_auto_mode(self, device_id: str, on: bool) -> dict[str, Any]:
+        """开启或关闭自动调节模式 (sjx: 18, cs: 1=开启, 0=关闭).
+
+        开启后设备将根据粉尘/CO2 等环境指标自动变档。
+        """
+        return await self._request(
+            ENDPOINT_CONTROL,
+            {"eq_guid": device_id, "sjx": CMD_AUTO_MODE, "cs": "1" if on else "0"},
+        )
+
+    async def set_indoor_purification(self, device_id: str, on: bool) -> dict[str, Any]:
+        """开启或关闭室内净化/循环模式 (sjx: 19, cs: 1=开启, 0=关闭).
+
+        切换新风肺保的送风阀门，进入室内空气循环净化状态。
+        """
+        return await self._request(
+            ENDPOINT_CONTROL,
+            {"eq_guid": device_id, "sjx": CMD_INDOOR_PURIFICATION, "cs": "1" if on else "0"},
+        )
+
     async def reset_hepa_filter(self, device_id: str) -> dict[str, Any]:
-        """Reset HEPA filter used time counter.
+        """重置高效 HEPA 滤芯已用计时 (sjx: 8, cs: "1").
 
-        Args:
-            device_id: Device GUID
-
-        Returns:
-            Updated status dictionary
+        在用户更换全新 HEPA 滤芯后调用，重置已用小时数为 0。
         """
         return await self._request(
             ENDPOINT_CONTROL,
@@ -387,13 +417,9 @@ class BroadAirApiClient:
         )
 
     async def reset_coarse_filter(self, device_id: str) -> dict[str, Any]:
-        """Reset coarse/primary filter used time counter.
+        """重置初效/粗效滤网已用计时 (sjx: 9, cs: "1").
 
-        Args:
-            device_id: Device GUID
-
-        Returns:
-            Updated status dictionary
+        在用户清洗并装回粗效滤网后调用，重置已用小时数为 0。
         """
         return await self._request(
             ENDPOINT_CONTROL,
@@ -401,10 +427,10 @@ class BroadAirApiClient:
         )
 
     async def validate_token(self) -> bool:
-        """Validate token by fetching devices.
+        """测试并验证当前 Token 是否有效 (通过尝试拉取设备列表).
 
         Returns:
-            True if token is valid, False otherwise
+            True 表示凭据有效，False 表示已失效
         """
         try:
             await self.get_devices()
@@ -412,5 +438,5 @@ class BroadAirApiClient:
         except BroadAirAuthError:
             return False
         except BroadAirApiError:
-            # Other errors don't necessarily mean invalid token
+            # 其他非认证异常 (如暂时网络波动) 不视为 Token 失效
             return True

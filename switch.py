@@ -1,9 +1,15 @@
-"""Switch platform for Broad Fresh Air."""
+"""开关实体平台 - 远大新风肺保 (FF100-Pro).
+
+本模块将远大新风肺保的功能模式开关映射为 Home Assistant Switch 实体：
+- 睡眠模式开关 (Sleep Mode Switch, sjx: 5)
+- 自动调节模式开关 (Auto Mode Switch, sjx: 18)
+- 室内净化/循环模式开关 (Indoor Purification Switch, sjx: 19)
+"""
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Coroutine
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
@@ -17,6 +23,8 @@ from .const import (
     DOMAIN,
     FIELD_AUTO_MODE,
     FIELD_SLEEP_MODE,
+    FIELD_SUPPLY_AIR_CONFIG,
+    FIELD_SUPPLY_AIR_MODE,
 )
 from .coordinator import BroadAirCoordinator
 
@@ -25,31 +33,49 @@ _LOGGER = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class BroadAirSwitchEntityDescription(SwitchEntityDescription):
-    """Describes a Broad Air switch entity."""
+    """扩展的开关实体描述结构体，包含状态读取字段与控制回调函数."""
 
     field: str = ""
-    turn_on_fn: Callable[[BroadAirCoordinator, str], Any] | None = None
-    turn_off_fn: Callable[[BroadAirCoordinator, str], Any] | None = None
+    turn_on_fn: Callable[[BroadAirCoordinator, str], Coroutine[Any, Any, Any]] | None = None
+    turn_off_fn: Callable[[BroadAirCoordinator, str], Coroutine[Any, Any, Any]] | None = None
+    available_fn: Callable[[dict[str, Any]], bool] | None = None
 
 
-async def _set_sleep_mode(coordinator: BroadAirCoordinator, device_id: str, on: bool) -> None:
-    """Set sleep mode."""
-    await coordinator.client.set_sleep_mode(device_id, on)
-
-
-# Note: Auto mode control - if the API supports it with a different sjx command,
-# update the api.py and add the method. For now, we'll assume it might use
-# a similar pattern. If it doesn't work, we can make this sensor read-only.
+# -----------------------------------------------------------------------------
+# 开关实体定义列表
+# -----------------------------------------------------------------------------
 SWITCH_DESCRIPTIONS: tuple[BroadAirSwitchEntityDescription, ...] = (
+    # 1. 睡眠模式开关 (开启后风机以超低静音转速运行)
     BroadAirSwitchEntityDescription(
         key="sleep_mode",
         name="Sleep Mode",
         icon="mdi:sleep",
         device_class=SwitchDeviceClass.SWITCH,
         field=FIELD_SLEEP_MODE,
+        turn_on_fn=lambda coord, dev_id: coord.client.set_sleep_mode(dev_id, True),
+        turn_off_fn=lambda coord, dev_id: coord.client.set_sleep_mode(dev_id, False),
     ),
-    # Auto mode - displayed as read-only for now since we don't know the control command
-    # If you discover the command, we can make it controllable
+    # 2. 自动调节模式开关 (根据粉尘与 CO2 浓度自动切换档位)
+    BroadAirSwitchEntityDescription(
+        key="auto_mode",
+        name="Auto Mode",
+        icon="mdi:fan-auto",
+        device_class=SwitchDeviceClass.SWITCH,
+        field=FIELD_AUTO_MODE,
+        turn_on_fn=lambda coord, dev_id: coord.client.set_auto_mode(dev_id, True),
+        turn_off_fn=lambda coord, dev_id: coord.client.set_auto_mode(dev_id, False),
+    ),
+    # 3. 室内净化模式开关 (切换为室内空气循环净化，仅在硬件支持该功能时可用)
+    BroadAirSwitchEntityDescription(
+        key="indoor_purification",
+        name="Indoor Purification",
+        icon="mdi:air-filter",
+        device_class=SwitchDeviceClass.SWITCH,
+        field=FIELD_SUPPLY_AIR_MODE,
+        available_fn=lambda data: str(data.get(FIELD_SUPPLY_AIR_CONFIG, "0")) == "1",
+        turn_on_fn=lambda coord, dev_id: coord.client.set_indoor_purification(dev_id, True),
+        turn_off_fn=lambda coord, dev_id: coord.client.set_indoor_purification(dev_id, False),
+    ),
 )
 
 
@@ -58,75 +84,73 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Broad Fresh Air switch entities from config entry."""
+    """根据配置列表异步注册 Switch 实体."""
     coordinator: BroadAirCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities: list[SwitchEntity] = [
-        BroadAirSleepSwitch(coordinator, entry),
+    entities = [
+        BroadAirGenericSwitch(coordinator, entry, description)
+        for description in SWITCH_DESCRIPTIONS
     ]
-
-    # Add auto mode as a read-only binary sensor style display
-    # (it's in the switch platform but we only display its state)
 
     async_add_entities(entities)
 
 
-class BroadAirSleepSwitch(CoordinatorEntity[BroadAirCoordinator], SwitchEntity):
-    """Representation of the sleep mode switch."""
+class BroadAirGenericSwitch(CoordinatorEntity[BroadAirCoordinator], SwitchEntity):
+    """远大模式控制通用开关实体实现类."""
 
     _attr_has_entity_name = True
-    _attr_name = "Sleep Mode"
-    _attr_icon = "mdi:sleep"
-    _attr_device_class = SwitchDeviceClass.SWITCH
+    entity_description: BroadAirSwitchEntityDescription
 
     def __init__(
         self,
         coordinator: BroadAirCoordinator,
         entry: ConfigEntry,
+        description: BroadAirSwitchEntityDescription,
     ) -> None:
-        """Initialize the switch entity.
+        """初始化开关实体.
 
         Args:
-            coordinator: Data update coordinator
-            entry: Config entry
+            coordinator: 数据更新协调器
+            entry: 配置条目
+            description: 开关元数据描述
         """
         super().__init__(coordinator)
 
+        self.entity_description = description
         self._device_id = entry.data[CONF_DEVICE_ID]
-        self._attr_unique_id = f"{self._device_id}_sleep_mode"
+        self._attr_unique_id = f"{self._device_id}_{description.key}"
 
-        # Link to the same device as the fan
+        # 关联至主设备
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._device_id)},
         )
 
     @property
-    def is_on(self) -> bool | None:
-        """Return true if sleep mode is on."""
-        if self.coordinator.data is None:
-            return None
-        return self.coordinator.data.get(FIELD_SLEEP_MODE) == "1"
+    def available(self) -> bool:
+        """判断当前开关实体是否可用 (协调器数据正常且满足可用性条件)."""
+        if not super().available or self.coordinator.data is None:
+            return False
+
+        if self.entity_description.available_fn:
+            return self.entity_description.available_fn(self.coordinator.data)
+
+        return True
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional state attributes."""
+    def is_on(self) -> bool | None:
+        """读取当前开关状态 ("1" 为开启，"0" 为关闭)."""
         if self.coordinator.data is None:
-            return {}
-
-        return {
-            "auto_mode": self.coordinator.data.get(FIELD_AUTO_MODE) == "1",
-        }
+            return None
+        return str(self.coordinator.data.get(self.entity_description.field, "0")) == "1"
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on sleep mode."""
-        _LOGGER.debug("Enabling sleep mode for %s", self._device_id)
-
-        await self.coordinator.client.set_sleep_mode(self._device_id, True)
-        await self.coordinator.async_request_refresh()
+        """执行打开开关动作并立即刷新状态."""
+        if self.entity_description.turn_on_fn:
+            await self.entity_description.turn_on_fn(self.coordinator, self._device_id)
+            await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off sleep mode."""
-        _LOGGER.debug("Disabling sleep mode for %s", self._device_id)
-
-        await self.coordinator.client.set_sleep_mode(self._device_id, False)
-        await self.coordinator.async_request_refresh()
+        """执行关闭开关动作并立即刷新状态."""
+        if self.entity_description.turn_off_fn:
+            await self.entity_description.turn_off_fn(self.coordinator, self._device_id)
+            await self.coordinator.async_request_refresh()

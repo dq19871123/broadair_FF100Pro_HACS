@@ -1,4 +1,9 @@
-"""Button platform for Broad Fresh Air."""
+"""按钮实体平台 - 远大新风肺保 (FF100-Pro).
+
+本模块将远大滤网计时重置功能映射为 Home Assistant Button 实体：
+- 重置高效 HEPA 滤芯使用时间 (Reset HEPA Filter Button, sjx: 8, cs: "1")
+- 重置粗效/初效滤网使用时间 (Reset Primary Filter Button, sjx: 9, cs: "1")
+"""
 from __future__ import annotations
 
 import logging
@@ -22,7 +27,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Broad Fresh Air button entities from config entry."""
+    """初始化并注册滤网清零相关的 Button 实体."""
     coordinator: BroadAirCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     async_add_entities([
@@ -32,7 +37,7 @@ async def async_setup_entry(
 
 
 class BroadAirResetHEPAFilterButton(CoordinatorEntity[BroadAirCoordinator], ButtonEntity):
-    """Button to reset HEPA filter used time."""
+    """高效 HEPA 滤芯计时清零按钮实体 (用户更换新滤芯后点击)."""
 
     _attr_has_entity_name = True
     _attr_name = "Reset HEPA Filter"
@@ -44,25 +49,26 @@ class BroadAirResetHEPAFilterButton(CoordinatorEntity[BroadAirCoordinator], Butt
         coordinator: BroadAirCoordinator,
         entry: ConfigEntry,
     ) -> None:
-        """Initialize the button entity."""
+        """初始化按钮实体."""
         super().__init__(coordinator)
 
         self._device_id = entry.data[CONF_DEVICE_ID]
         self._attr_unique_id = f"{self._device_id}_reset_hepa_filter"
 
+        # 关联至主设备
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._device_id)},
         )
 
     async def async_press(self) -> None:
-        """Handle button press - reset HEPA filter timer."""
-        _LOGGER.info("Resetting HEPA filter timer for %s", self._device_id)
+        """点击按钮事件处理：向云端下发 HEPA 滤网清零指令 (sjx: 8, cs: 1)."""
+        _LOGGER.info("正在下发高效 HEPA 滤芯计时清零指令: 设备 ID=%s", self._device_id)
         await self.coordinator.client.reset_hepa_filter(self._device_id)
         await self.coordinator.async_request_refresh()
 
 
 class BroadAirResetCoarseFilterButton(CoordinatorEntity[BroadAirCoordinator], ButtonEntity):
-    """Button to reset coarse/primary filter used time."""
+    """初效/粗效滤网计时清零按钮实体 (用户清洗滤网后点击)."""
 
     _attr_has_entity_name = True
     _attr_name = "Reset Primary Filter"
@@ -74,18 +80,19 @@ class BroadAirResetCoarseFilterButton(CoordinatorEntity[BroadAirCoordinator], Bu
         coordinator: BroadAirCoordinator,
         entry: ConfigEntry,
     ) -> None:
-        """Initialize the button entity."""
+        """初始化按钮实体."""
         super().__init__(coordinator)
 
         self._device_id = entry.data[CONF_DEVICE_ID]
         self._attr_unique_id = f"{self._device_id}_reset_coarse_filter"
 
+        # 关联至主设备
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._device_id)},
         )
 
     async def async_press(self) -> None:
-        """Handle button press - reset coarse filter timer."""
-        _LOGGER.info("Resetting coarse filter timer for %s", self._device_id)
+        """点击按钮事件处理：向云端下发粗效滤网计时清零指令 (sjx: 9, cs: 1)."""
+        _LOGGER.info("正在下发粗效滤网计时清零指令: 设备 ID=%s", self._device_id)
         await self.coordinator.client.reset_coarse_filter(self._device_id)
         await self.coordinator.async_request_refresh()

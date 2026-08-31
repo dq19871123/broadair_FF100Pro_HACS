@@ -1,11 +1,12 @@
 {
   "domain": "broadair",
-  "name": "Broad Fresh Air",
+  "name": "Broad Fresh Air (FF100-Pro)",
   "codeowners": [],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/dq19871123/broadair_FF100Pro_HACS",
+  "issue_tracker": "https://github.com/dq19871123/broadair_FF100Pro_HACS/issues",
   "iot_class": "cloud_polling",
   "requirements": ["aiohttp>=3.8.0"],
-  "version": "0.1.1"
+  "version": "0.2.0"
 }
