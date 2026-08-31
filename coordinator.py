@@ -60,6 +60,9 @@ class BroadAirCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         try:
             data = await self.client.get_status(self.device_id)
+            if not isinstance(data, dict):
+                data = {}
+
             _LOGGER.debug(
                 "设备 [%s] 状态同步成功: 开关=%s, 设定档位=%s, 睡眠模式=%s, 出风量=%s m³/h",
                 self.device_name,

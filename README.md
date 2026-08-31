@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="Broad Logo" width="260">
+</p>
+
 # 远大新风肺保 (FF100-Pro) Home Assistant 自定义集成
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)

@@ -85,17 +85,16 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
         self._attr_unique_id = f"{self._device_id}_fan"
 
         # 注册设备信息 (使同一设备下的传感器、开关、风扇聚合在同一个设备卡片中)
+        mac = entry.data.get(CONF_DEVICE_MAC)
+        connections = {("mac", mac)} if mac else None
+
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._device_id)},
             name=entry.data.get(CONF_DEVICE_NAME, "Broad Fresh Air"),
             manufacturer="Broad (远大)",
             model=entry.data.get(CONF_DEVICE_MODEL, "FF100-Pro"),
+            connections=connections,
         )
-
-        # 若存在 MAC 地址则添加网络连接标识
-        mac = entry.data.get(CONF_DEVICE_MAC)
-        if mac:
-            self._attr_device_info["connections"] = {("mac", mac)}
 
     @property
     def is_on(self) -> bool | None:

@@ -139,7 +139,13 @@ async def async_login(
     try:
         async with asyncio.timeout(30):
             async with session.post(url, json=payload, headers=headers, ssl=_create_ssl_context()) as resp:
-                result = await resp.json()
+                try:
+                    result = await resp.json()
+                except Exception as json_err:
+                    text_resp = await resp.text()
+                    raise BroadAirConnectionError(
+                        f"解析登录响应失败 (HTTP {resp.status}): {text_resp[:100]}"
+                    ) from json_err
 
                 _LOGGER.debug("登录响应状态码: %s", result.get("Code"))
 
@@ -149,12 +155,17 @@ async def async_login(
                     raise BroadAirAuthError(f"登录失败 (Code: {code}): {msg}")
 
                 # 返回登录成功后的 Data 对象 (包含 Token, ID, Account 等)
-                return result.get("Data", {})
+                data = result.get("Data")
+                if isinstance(data, dict):
+                    return data
+                return {}
 
     except asyncio.TimeoutError as err:
         raise BroadAirConnectionError("登录请求响应超时") from err
-    except aiohttp.ClientError as err:
-        raise BroadAirConnectionError(f"登录网络连接失败: {err}") from err
+    except (aiohttp.ClientError, BroadAirConnectionError, BroadAirAuthError):
+        raise
+    except Exception as err:
+        raise BroadAirConnectionError(f"登录网络连接异常: {err}") from err
     finally:
         if own_session and session:
             await session.close()
@@ -251,7 +262,13 @@ class BroadAirApiClient:
                     headers=self._headers(),
                     ssl=self._ssl_context,
                 ) as resp:
-                    result = await resp.json()
+                    try:
+                        result = await resp.json()
+                    except Exception as json_err:
+                        text_resp = await resp.text()
+                        raise BroadAirConnectionError(
+                            f"解析云端响应失败 (HTTP {resp.status}): {text_resp[:100]}"
+                        ) from json_err
 
                     _LOGGER.debug("收到 API 响应 [%s]: %s", endpoint, result)
 
@@ -260,7 +277,8 @@ class BroadAirApiClient:
                         # 兼容部分接口使用 Head.Code 返回状态码的设计
                         head_code = result.get("Head", {}).get("Code") if isinstance(result.get("Head"), dict) else None
                         if head_code == 200:
-                            return result.get("Data", {})
+                            data_resp = result.get("Data")
+                            return data_resp if data_resp is not None else {}
 
                         msg = result.get("Message", result.get("Msg", result.get("DetailMessage", "未知错误")))
 
@@ -288,11 +306,14 @@ class BroadAirApiClient:
                             raise BroadAirAuthError(f"API 鉴权失败 (Code: {code}): {msg}")
                         raise BroadAirApiError(f"API 业务请求失败 (Code: {code}): {msg}")
 
-                    return result.get("Data", {})
+                    data_resp = result.get("Data")
+                    return data_resp if data_resp is not None else {}
 
         except asyncio.TimeoutError as err:
             raise BroadAirConnectionError(f"请求超时: {url}") from err
-        except aiohttp.ClientError as err:
+        except (aiohttp.ClientError, BroadAirConnectionError, BroadAirAuthError):
+            raise
+        except Exception as err:
             raise BroadAirConnectionError(f"网络连接异常: {err}") from err
 
     async def refresh_token(self) -> str:
