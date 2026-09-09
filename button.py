@@ -40,7 +40,8 @@ class BroadAirResetHEPAFilterButton(CoordinatorEntity[BroadAirCoordinator], Butt
     """高效 HEPA 滤芯计时清零按钮实体 (用户更换新滤芯后点击)."""
 
     _attr_has_entity_name = True
-    _attr_name = "Reset HEPA Filter"
+    _attr_translation_key = "reset_hepa_filter"
+    _attr_name = "重置HEPA高效滤芯计时"
     _attr_icon = "mdi:air-filter"
     _attr_device_class = ButtonDeviceClass.RESTART
 
@@ -71,7 +72,8 @@ class BroadAirResetCoarseFilterButton(CoordinatorEntity[BroadAirCoordinator], Bu
     """初效/粗效滤网计时清零按钮实体 (用户清洗滤网后点击)."""
 
     _attr_has_entity_name = True
-    _attr_name = "Reset Primary Filter"
+    _attr_translation_key = "reset_coarse_filter"
+    _attr_name = "重置粗效滤网计时"
     _attr_icon = "mdi:air-filter"
     _attr_device_class = ButtonDeviceClass.RESTART
 

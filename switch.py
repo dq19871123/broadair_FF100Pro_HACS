@@ -14,6 +14,7 @@ from typing import Any, Callable, Coroutine
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -48,7 +49,8 @@ SWITCH_DESCRIPTIONS: tuple[BroadAirSwitchEntityDescription, ...] = (
     # 1. 睡眠模式开关 (开启后风机以超低静音转速运行)
     BroadAirSwitchEntityDescription(
         key="sleep_mode",
-        name="Sleep Mode",
+        translation_key="sleep_mode",
+        name="睡眠模式",
         icon="mdi:sleep",
         device_class=SwitchDeviceClass.SWITCH,
         field=FIELD_SLEEP_MODE,
@@ -58,7 +60,8 @@ SWITCH_DESCRIPTIONS: tuple[BroadAirSwitchEntityDescription, ...] = (
     # 2. 自动调节模式开关 (根据粉尘与 CO2 浓度自动切换档位)
     BroadAirSwitchEntityDescription(
         key="auto_mode",
-        name="Auto Mode",
+        translation_key="auto_mode",
+        name="自动模式",
         icon="mdi:fan-auto",
         device_class=SwitchDeviceClass.SWITCH,
         field=FIELD_AUTO_MODE,
@@ -68,7 +71,8 @@ SWITCH_DESCRIPTIONS: tuple[BroadAirSwitchEntityDescription, ...] = (
     # 3. 室内净化模式开关 (切换为室内空气循环净化，仅在硬件支持该功能时可用)
     BroadAirSwitchEntityDescription(
         key="indoor_purification",
-        name="Indoor Purification",
+        translation_key="indoor_purification",
+        name="室内净化模式",
         icon="mdi:air-filter",
         device_class=SwitchDeviceClass.SWITCH,
         field=FIELD_SUPPLY_AIR_MODE,
@@ -86,11 +90,36 @@ async def async_setup_entry(
 ) -> None:
     """根据配置列表异步注册 Switch 实体."""
     coordinator: BroadAirCoordinator = hass.data[DOMAIN][entry.entry_id]
+    ent_reg = er.async_get(hass)
 
-    entities = [
-        BroadAirGenericSwitch(coordinator, entry, description)
-        for description in SWITCH_DESCRIPTIONS
-    ]
+    existing_entries = {
+        e.unique_id: e.entity_id
+        for e in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+        if e.domain == "switch"
+    }
+
+    device_id = entry.data[CONF_DEVICE_ID]
+    entities: list[BroadAirGenericSwitch] = []
+
+    for description in SWITCH_DESCRIPTIONS:
+        unique_id = f"{device_id}_{description.key}"
+
+        is_supported = True
+        if description.available_fn and coordinator.data is not None:
+            is_supported = description.available_fn(coordinator.data)
+
+        if not is_supported:
+            if unique_id in existing_entries:
+                entity_id = existing_entries[unique_id]
+                _LOGGER.info(
+                    "设备不支持开关 [%s]，已自动从注册表清理: %s",
+                    description.key,
+                    entity_id,
+                )
+                ent_reg.async_remove(entity_id)
+            continue
+
+        entities.append(BroadAirGenericSwitch(coordinator, entry, description))
 
     async_add_entities(entities)
 

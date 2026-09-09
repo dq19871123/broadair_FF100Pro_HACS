@@ -55,6 +55,7 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
     # 实体命名直接沿用设备主名称
     _attr_has_entity_name = True
     _attr_name = None
+    _attr_translation_key = "broadair"
 
     # 支持的功能特性声明：调速、预设模式、开关控制
     _attr_supported_features = (

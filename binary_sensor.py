@@ -57,7 +57,8 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[BroadAirBinarySensorEntityDescription, ...] = 
     # 1. 设备故障监测实体 (用于自动化告警)
     BroadAirBinarySensorEntityDescription(
         key="problem",
-        name="Problem",
+        translation_key="problem",
+        name="故障报警",
         device_class=BinarySensorDeviceClass.PROBLEM,
         is_on_fn=has_device_fault,
         attr_fn=lambda data: {
@@ -68,7 +69,8 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[BroadAirBinarySensorEntityDescription, ...] = 
     # 2. 设备在线状态实体
     BroadAirBinarySensorEntityDescription(
         key="connectivity",
-        name="Connectivity",
+        translation_key="connectivity",
+        name="在线状态",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         is_on_fn=lambda data: str(data.get("Online", "1")) == "1",
     ),
