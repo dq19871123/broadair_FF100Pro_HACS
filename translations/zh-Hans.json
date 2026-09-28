@@ -63,9 +63,6 @@
       "sleep_mode": {
         "name": "睡眠模式"
       },
-      "auto_mode": {
-        "name": "自动模式"
-      },
       "indoor_purification": {
         "name": "室内净化模式"
       }

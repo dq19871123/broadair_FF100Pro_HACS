@@ -63,9 +63,6 @@
       "sleep_mode": {
         "name": "Sleep Mode"
       },
-      "auto_mode": {
-        "name": "Auto Mode"
-      },
       "indoor_purification": {
         "name": "Indoor Purification"
       }

@@ -2,7 +2,6 @@
 
 本模块将远大新风肺保的功能模式开关映射为 Home Assistant Switch 实体：
 - 睡眠模式开关 (Sleep Mode Switch, sjx: 5)
-- 自动调节模式开关 (Auto Mode Switch, sjx: 18)
 - 室内净化/循环模式开关 (Indoor Purification Switch, sjx: 19)
 """
 from __future__ import annotations
@@ -22,7 +21,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     CONF_DEVICE_ID,
     DOMAIN,
-    FIELD_AUTO_MODE,
     FIELD_SLEEP_MODE,
     FIELD_SUPPLY_AIR_CONFIG,
     FIELD_SUPPLY_AIR_MODE,
@@ -43,7 +41,8 @@ class BroadAirSwitchEntityDescription(SwitchEntityDescription):
 
 
 # -----------------------------------------------------------------------------
-# 开关实体定义列表
+# -----------------------------------------------------------------------------
+# 开关实体定义列表 (FF100-Pro 原生仅支持睡眠模式与选配的室内净化)
 # -----------------------------------------------------------------------------
 SWITCH_DESCRIPTIONS: tuple[BroadAirSwitchEntityDescription, ...] = (
     # 1. 睡眠模式开关 (开启后风机以超低静音转速运行)
@@ -57,18 +56,7 @@ SWITCH_DESCRIPTIONS: tuple[BroadAirSwitchEntityDescription, ...] = (
         turn_on_fn=lambda coord, dev_id: coord.client.set_sleep_mode(dev_id, True),
         turn_off_fn=lambda coord, dev_id: coord.client.set_sleep_mode(dev_id, False),
     ),
-    # 2. 自动调节模式开关 (根据粉尘与 CO2 浓度自动切换档位)
-    BroadAirSwitchEntityDescription(
-        key="auto_mode",
-        translation_key="auto_mode",
-        name="自动模式",
-        icon="mdi:fan-auto",
-        device_class=SwitchDeviceClass.SWITCH,
-        field=FIELD_AUTO_MODE,
-        turn_on_fn=lambda coord, dev_id: coord.client.set_auto_mode(dev_id, True),
-        turn_off_fn=lambda coord, dev_id: coord.client.set_auto_mode(dev_id, False),
-    ),
-    # 3. 室内净化模式开关 (切换为室内空气循环净化，仅在硬件支持该功能时可用)
+    # 2. 室内净化模式开关 (切换为室内空气循环净化，仅在硬件支持该功能时可用)
     BroadAirSwitchEntityDescription(
         key="indoor_purification",
         translation_key="indoor_purification",
@@ -99,6 +87,16 @@ async def async_setup_entry(
     }
 
     device_id = entry.data[CONF_DEVICE_ID]
+
+    # 1. 主动清理此前版本遗留或 FF100-Pro 不支持的幽灵开关 (如自动模式 auto_mode)
+    deprecated_unique_ids = {f"{device_id}_auto_mode"}
+    for dep_uid in deprecated_unique_ids:
+        if dep_uid in existing_entries:
+            entity_id = existing_entries[dep_uid]
+            _LOGGER.info("已自动从注册表清理 FF100-Pro 不支持的开关: %s (%s)", dep_uid, entity_id)
+            ent_reg.async_remove(entity_id)
+
+    # 2. 动态注册受支持的开关实体
     entities: list[BroadAirGenericSwitch] = []
 
     for description in SWITCH_DESCRIPTIONS:
