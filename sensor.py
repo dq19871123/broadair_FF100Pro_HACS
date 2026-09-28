@@ -148,7 +148,49 @@ def get_fault_status_text(data: dict[str, Any]) -> str:
     if fault and str(fault) not in ("00", "0", ""):
         return f"Fault ({fault})"
 
-    return "Normal"
+def get_speed_level_attributes(data: dict[str, Any]) -> dict[str, Any]:
+    """生成风速档位的扩展属性 (含指示灯颜色、浅绿呼吸标记与色块显示)."""
+    is_sleep = str(data.get(FIELD_SLEEP_MODE)) == "1"
+    power = str(data.get(FIELD_POWER)) == "1"
+    gear = get_int_value(data, FIELD_GEAR) or get_int_value(data, FIELD_RUNNING_GEAR) or 0
+
+    attrs: dict[str, Any] = {
+        "min_level": 1,
+        "max_level": 3,
+        "is_sleep_mode": is_sleep,
+    }
+
+    if not power:
+        attrs.update({
+            "indicator_color": "off",
+            "indicator_mode": "off",
+            "indicator_color_hex": "#9E9E9E",
+            "gear_display": "关机",
+        })
+        return attrs
+
+    if is_sleep:
+        attrs.update({
+            "indicator_color": "light_green",
+            "indicator_mode": "breathing",
+            "indicator_color_hex": "#69F0AE",
+            "gear_display": "睡眠档 🟢 (浅绿·呼吸)",
+        })
+        return attrs
+
+    color_map = {
+        1: ("blue", "steady", "#2196F3", "1档 🔵"),
+        2: ("green", "steady", "#4CAF50", "2档 🟢"),
+        3: ("yellow", "steady", "#FFB300", "3档 🟡"),
+    }
+    color_info = color_map.get(gear, ("unknown", "unknown", "#9E9E9E", f"{gear}档"))
+    attrs.update({
+        "indicator_color": color_info[0],
+        "indicator_mode": color_info[1],
+        "indicator_color_hex": color_info[2],
+        "gear_display": color_info[3],
+    })
+    return attrs
 
 
 # -----------------------------------------------------------------------------
@@ -176,11 +218,7 @@ SENSOR_DESCRIPTIONS: tuple[BroadAirSensorEntityDescription, ...] = (
         value_fn=lambda data: 0 if str(data.get(FIELD_SLEEP_MODE)) == "1" else (
             get_int_value(data, FIELD_GEAR) or get_int_value(data, FIELD_RUNNING_GEAR) or 0
         ),
-        attr_fn=lambda data: {
-            "min_level": 1,
-            "max_level": 3,
-            "is_sleep_mode": str(data.get(FIELD_SLEEP_MODE)) == "1",
-        },
+        attr_fn=get_speed_level_attributes,
     ),
     # 3. 故障自检与诊断状态
     BroadAirSensorEntityDescription(

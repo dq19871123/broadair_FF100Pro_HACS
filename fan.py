@@ -187,12 +187,9 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
         await self.coordinator.client.set_power(self._device_id, True)
 
         # 2. 如果携带了目标预设模式
-        if preset_mode == PRESET_MODE_SLEEP:
-            await self.coordinator.client.set_sleep_mode(self._device_id, True)
-        elif preset_mode is not None and preset_mode in ("1", "2", "3"):
-            if self.is_sleep_mode:
-                await self.coordinator.client.set_sleep_mode(self._device_id, False)
-            await self.coordinator.client.set_speed(self._device_id, int(preset_mode))
+        # 2. 如果携带了目标预设模式
+        if preset_mode:
+            await self.async_set_preset_mode(preset_mode)
         # 3. 如果携带了目标速度百分比
         elif percentage is not None and percentage > 0:
             if self.is_sleep_mode:
@@ -240,10 +237,21 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """切换预设模式 (1, 2, 3, sleep)."""
+        """切换预设模式 (支持 1, 2, 3, sleep 及带色块中文别名)."""
         _LOGGER.debug("设置设备 %s 预设模式为 %s", self._device_id, preset_mode)
 
-        if preset_mode not in PRESET_MODES:
+        mode_clean = preset_mode.strip().lower()
+        if mode_clean in (PRESET_MODE_SLEEP, "睡眠", "睡眠模式", "睡眠档", "睡眠档 🟢 (浅绿·呼吸)"):
+            target_mode = PRESET_MODE_SLEEP
+        elif mode_clean in ("1", "1档", "1档 🔵", "speed_1"):
+            target_mode = "1"
+        elif mode_clean in ("2", "2档", "2档 🟢", "speed_2"):
+            target_mode = "2"
+        elif mode_clean in ("3", "3档", "3档 🟡", "speed_3"):
+            target_mode = "3"
+        elif preset_mode in PRESET_MODES:
+            target_mode = preset_mode
+        else:
             _LOGGER.error("非法的预设模式: %s (支持列表: %s)", preset_mode, PRESET_MODES)
             return
 
@@ -251,13 +259,61 @@ class BroadAirFan(CoordinatorEntity[BroadAirCoordinator], FanEntity):
         if not self.is_on:
             await self.coordinator.client.set_power(self._device_id, True)
 
-        if preset_mode == PRESET_MODE_SLEEP:
+        if target_mode == PRESET_MODE_SLEEP:
             # 开启睡眠模式
             await self.coordinator.client.set_sleep_mode(self._device_id, True)
         else:
             # 切换为指定常规档位 (若此前在睡眠模式则退出)
             if self.is_sleep_mode:
                 await self.coordinator.client.set_sleep_mode(self._device_id, False)
-            await self.coordinator.client.set_speed(self._device_id, int(preset_mode))
+            await self.coordinator.client.set_speed(self._device_id, int(target_mode))
 
         await self.coordinator.async_request_refresh()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """暴露指示灯状态与档位显示属性."""
+        if not self.is_on:
+            return {
+                "indicator_color": "off",
+                "indicator_mode": "off",
+                "indicator_color_hex": "#9E9E9E",
+                "gear_display": "关机",
+            }
+
+        if self.is_sleep_mode:
+            return {
+                "indicator_color": "light_green",
+                "indicator_mode": "breathing",
+                "indicator_color_hex": "#69F0AE",
+                "gear_display": "睡眠档 🟢 (浅绿·呼吸)",
+            }
+
+        gear = self.coordinator.data.get(FIELD_GEAR) or self.coordinator.data.get(
+            FIELD_RUNNING_GEAR
+        )
+        gear_str = str(gear) if gear else "1"
+
+        if gear_str == "1":
+            return {
+                "indicator_color": "blue",
+                "indicator_mode": "steady",
+                "indicator_color_hex": "#2196F3",
+                "gear_display": "1档 🔵",
+            }
+        if gear_str == "2":
+            return {
+                "indicator_color": "green",
+                "indicator_mode": "steady",
+                "indicator_color_hex": "#4CAF50",
+                "gear_display": "2档 🟢",
+            }
+        if gear_str == "3":
+            return {
+                "indicator_color": "yellow",
+                "indicator_mode": "steady",
+                "indicator_color_hex": "#FFB300",
+                "gear_display": "3档 🟡",
+            }
+
+        return {}

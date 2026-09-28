@@ -56,7 +56,17 @@
     },
     "fan": {
       "broadair": {
-        "name": "Fresh Air Unit"
+        "name": "Fresh Air Unit",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "sleep": "Sleep 🟢 (Light Green · Breathing)",
+              "1": "Gear 1 🔵",
+              "2": "Gear 2 🟢",
+              "3": "Gear 3 🟡"
+            }
+          }
+        }
       }
     },
     "switch": {

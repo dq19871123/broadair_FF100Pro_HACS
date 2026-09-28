@@ -56,7 +56,17 @@
     },
     "fan": {
       "broadair": {
-        "name": "新风肺保"
+        "name": "新风肺保",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "sleep": "睡眠档 🟢 (浅绿·呼吸)",
+              "1": "1档 🔵",
+              "2": "2档 🟢",
+              "3": "3档 🟡"
+            }
+          }
+        }
       }
     },
     "switch": {
