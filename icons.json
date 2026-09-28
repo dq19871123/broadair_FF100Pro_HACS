@@ -1,0 +1,20 @@
+{
+  "entity": {
+    "fan": {
+      "broadair": {
+        "default": "mdi:fan",
+        "state_attributes": {
+          "preset_mode": {
+            "default": "mdi:fan",
+            "state": {
+              "sleep": "mdi:power-sleep",
+              "1": "mdi:fan-speed-1",
+              "2": "mdi:fan-speed-2",
+              "3": "mdi:fan-speed-3"
+            }
+          }
+        }
+      }
+    }
+  }
+}
