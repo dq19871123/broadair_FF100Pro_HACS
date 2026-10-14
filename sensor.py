@@ -1,12 +1,10 @@
 """传感器平台 - 远大新风肺保 (FF100-Pro).
 
-本模块负责将远大设备的遥测数据与滤网寿命映射为 Home Assistant Sensor 实体：
+本模块负责将远大设备的遥测数据与滤芯寿命映射为 Home Assistant Sensor 实体：
 - 实时新风风量 (m³/h)
 - 运行风速档位 (1~3 档，睡眠模式显示为 0 档)
-- 滤网寿命监控 (高效 HEPA 剩余百分比与已用小时数、粗效初效剩余百分比与已用小时数、静电除尘器)
-- 环境监测传感器 (PM2.5、CO2、室内温度 - 自动缩放除以 10)
 - 设备故障诊断状态 (解析云端下发的 ALLFAULT 详细文本)
-- 动态硬件选配件检测 (模块未安装或传感器异常时自动标记实体为不可用)
+- 滤芯寿命监控 (HEPA高效滤芯剩余百分比与已用小时数、粗效滤芯剩余百分比与已用小时数)
 """
 from __future__ import annotations
 
@@ -15,18 +13,12 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from homeassistant.components.sensor import (
-    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONCENTRATION_PARTS_PER_MILLION,
-    PERCENTAGE,
-    UnitOfTemperature,
-    UnitOfTime,
-)
+from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -40,23 +32,15 @@ from .const import (
     DOMAIN,
     FIELD_AIR_VOLUME,
     FIELD_ALL_FAULT,
-    FIELD_CO2,
-    FIELD_CO2_MODULE,
     FIELD_COARSE_USED_TIME,
-    FIELD_DUSTER_CLEANING_CYCLE,
-    FIELD_DUSTER_USED_TIME,
-    FIELD_DUST_MODULE,
     FIELD_FAULT,
     FIELD_GEAR,
     FIELD_HEPA_LIFE_CYCLE,
     FIELD_HEPA_USED_TIME,
-    FIELD_PM_2_5,
-    FIELD_PM_2_5_DUST,
+    FIELD_POWER,
     FIELD_PRIMARY_CLEANING_CYCLE,
-    FIELD_ROOM_TEMP,
     FIELD_RUNNING_GEAR,
     FIELD_SLEEP_MODE,
-    FIELD_TEMP_MODULE,
 )
 from .coordinator import BroadAirCoordinator
 
@@ -86,34 +70,6 @@ def get_int_value(data: dict[str, Any], field: str) -> int | None:
         return None
 
 
-def get_pm25_value(data: dict[str, Any]) -> int | None:
-    """提取 PM2.5 浓度数值 (过滤 65535 离线哨兵值与故障状态)."""
-    val = get_int_value(data, FIELD_PM_2_5_DUST)
-    if val is None or val == 65535:
-        val = get_int_value(data, FIELD_PM_2_5)
-    if val is None or val == 65535:
-        return None
-
-    all_fault = str(data.get(FIELD_ALL_FAULT, ""))
-    if "PM2.5故障" in all_fault:
-        return None
-
-    return val
-
-
-def get_temperature_value(data: dict[str, Any]) -> float | None:
-    """提取室内温度数值 (远大云端下发原始值为真实值的 10 倍，需除以 10.0)."""
-    raw_val = get_int_value(data, FIELD_ROOM_TEMP)
-    if raw_val is None:
-        return None
-
-    # 温度异常极值哨兵值过滤
-    if raw_val in (65535, -9990, 9990):
-        return None
-
-    return round(raw_val / 10.0, 1)
-
-
 def get_filter_remaining_percentage(
     data: dict[str, Any],
     used_field: str,
@@ -133,11 +89,6 @@ def get_filter_remaining_percentage(
     return max(0, min(100, int(round(100.0 - used_pct))))
 
 
-def is_module_installed(data: dict[str, Any], module_field: str) -> bool:
-    """检测设备是否安装了指定硬件传感器选配件 (1 为已安装，0 为未安装)."""
-    return str(data.get(module_field, "0")) == "1"
-
-
 def get_fault_status_text(data: dict[str, Any]) -> str:
     """解析设备当前故障状态文本."""
     all_fault = data.get(FIELD_ALL_FAULT)
@@ -147,6 +98,9 @@ def get_fault_status_text(data: dict[str, Any]) -> str:
     fault = data.get(FIELD_FAULT)
     if fault and str(fault) not in ("00", "0", ""):
         return f"Fault ({fault})"
+
+    return "Normal"
+
 
 def get_speed_level_attributes(data: dict[str, Any]) -> dict[str, Any]:
     """生成风速档位的扩展属性 (含指示灯颜色、浅绿呼吸标记与色块显示)."""
@@ -194,7 +148,7 @@ def get_speed_level_attributes(data: dict[str, Any]) -> dict[str, Any]:
 
 
 # -----------------------------------------------------------------------------
-# 传感器实体配置元数据定义
+# 传感器实体配置元数据定义 (针对 FF100-Pro 原生支持的 7 个遥测项目)
 # -----------------------------------------------------------------------------
 SENSOR_DESCRIPTIONS: tuple[BroadAirSensorEntityDescription, ...] = (
     # 1. 实时新风出风量传感器
@@ -232,11 +186,11 @@ SENSOR_DESCRIPTIONS: tuple[BroadAirSensorEntityDescription, ...] = (
             "fault_detail": data.get(FIELD_ALL_FAULT, ""),
         },
     ),
-    # 4. 高效 HEPA 滤芯剩余寿命百分比
+    # 4. HEPA高效滤芯剩余寿命百分比
     BroadAirSensorEntityDescription(
         key="hepa_filter_life",
         translation_key="hepa_filter_life",
-        name="HEPA滤芯剩余寿命",
+        name="HEPA高效滤芯剩余寿命",
         icon="mdi:air-filter",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -248,22 +202,22 @@ SENSOR_DESCRIPTIONS: tuple[BroadAirSensorEntityDescription, ...] = (
             "total_hours": get_int_value(data, FIELD_HEPA_LIFE_CYCLE) or DEFAULT_HEPA_FILTER_LIFE,
         },
     ),
-    # 5. 高效 HEPA 滤芯累计已用时长 (默认禁用，供高级用户启用)
+    # 5. HEPA高效滤芯累计已用时长 (默认禁用，供高级用户启用)
     BroadAirSensorEntityDescription(
         key="hepa_filter_used",
         translation_key="hepa_filter_used",
-        name="HEPA滤芯已用时间",
+        name="HEPA高效滤芯已用时间",
         icon="mdi:clock-outline",
         native_unit_of_measurement=UnitOfTime.HOURS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda data: get_int_value(data, FIELD_HEPA_USED_TIME),
         entity_registry_enabled_default=False,
     ),
-    # 6. 初效/粗效滤网剩余寿命百分比
+    # 6. 粗效滤芯剩余寿命百分比
     BroadAirSensorEntityDescription(
         key="coarse_filter_life",
         translation_key="coarse_filter_life",
-        name="粗效滤网剩余寿命",
+        name="粗效滤芯剩余寿命",
         icon="mdi:air-filter",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -275,81 +229,16 @@ SENSOR_DESCRIPTIONS: tuple[BroadAirSensorEntityDescription, ...] = (
             "total_hours": get_int_value(data, FIELD_PRIMARY_CLEANING_CYCLE) or DEFAULT_PRIMARY_FILTER_LIFE,
         },
     ),
-    # 7. 初效/粗效滤网累计已用时长 (默认禁用)
+    # 7. 粗效滤芯累计已用时长 (默认禁用)
     BroadAirSensorEntityDescription(
         key="coarse_filter_used",
         translation_key="coarse_filter_used",
-        name="粗效滤网已用时间",
+        name="粗效滤芯已用时间",
         icon="mdi:clock-outline",
         native_unit_of_measurement=UnitOfTime.HOURS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda data: get_int_value(data, FIELD_COARSE_USED_TIME),
         entity_registry_enabled_default=False,
-    ),
-    # 8. 静电除尘器寿命百分比 (若设备配置了除尘器则可用)
-    BroadAirSensorEntityDescription(
-        key="duster_filter_life",
-        translation_key="duster_filter_life",
-        name="静电除尘器寿命",
-        icon="mdi:air-filter",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: get_filter_remaining_percentage(
-            data, FIELD_DUSTER_USED_TIME, FIELD_DUSTER_CLEANING_CYCLE, 500
-        ),
-        available_fn=lambda data: bool(get_int_value(data, FIELD_DUSTER_CLEANING_CYCLE)),
-        attr_fn=lambda data: {
-            "used_hours": get_int_value(data, FIELD_DUSTER_USED_TIME),
-            "total_hours": get_int_value(data, FIELD_DUSTER_CLEANING_CYCLE),
-        },
-        entity_registry_enabled_default=False,
-    ),
-    # 9. 二氧化碳浓度传感器 (仅在硬件安装了 CO2 模块时可用)
-    BroadAirSensorEntityDescription(
-        key="co2",
-        translation_key="co2",
-        name="二氧化碳浓度",
-        icon="mdi:molecule-co2",
-        device_class=SensorDeviceClass.CO2,
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: get_int_value(data, FIELD_CO2),
-        available_fn=lambda data: is_module_installed(data, FIELD_CO2_MODULE)
-        and get_int_value(data, FIELD_CO2) is not None,
-    ),
-    # 10. PM2.5 粉尘浓度传感器 (仅在安装了粉尘模块、读数有效且无 PM2.5 故障时可用)
-    BroadAirSensorEntityDescription(
-        key="pm25",
-        translation_key="pm25",
-        name="PM2.5浓度",
-        icon="mdi:blur",
-        device_class=SensorDeviceClass.PM25,
-        native_unit_of_measurement="µg/m³",
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=get_pm25_value,
-        available_fn=lambda data: is_module_installed(data, FIELD_DUST_MODULE)
-        and get_pm25_value(data) is not None,
-        attr_fn=lambda data: {
-            "quality_level": (
-                "Good" if (get_pm25_value(data) or 0) <= 20
-                else "Moderate" if (get_pm25_value(data) or 0) <= 50
-                else "Poor"
-            ) if get_pm25_value(data) is not None else "Unknown"
-        },
-    ),
-    # 11. 室内温度传感器 (仅在安装了温度模块时可用，数值已做 0.1 缩放)
-    BroadAirSensorEntityDescription(
-        key="temperature",
-        translation_key="temperature",
-        name="室内温度",
-        icon="mdi:thermometer",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=1,
-        value_fn=get_temperature_value,
-        available_fn=lambda data: is_module_installed(data, FIELD_TEMP_MODULE)
-        and get_temperature_value(data) is not None,
     ),
 )
 
@@ -359,11 +248,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """根据传感器描述列表批量注册 Sensor 实体.
-
-    仅添加硬件实际支持且已安装的传感器实体；对于硬件未安装或不可用的选配传感器，
-    若此前已存在于注册表中，则自动清理移除，避免在界面中显示为“不可用”。
-    """
+    """注册 Sensor 实体并自动清理历史不支持的遗留传感器."""
     coordinator: BroadAirCoordinator = hass.data[DOMAIN][entry.entry_id]
     ent_reg = er.async_get(hass)
 
@@ -375,31 +260,29 @@ async def async_setup_entry(
     }
 
     device_id = entry.data[CONF_DEVICE_ID]
-    entities: list[BroadAirSensor] = []
 
-    for description in SENSOR_DESCRIPTIONS:
-        unique_id = f"{device_id}_{description.key}"
+    # 1. 自动清理此前版本遗留或 FF100-Pro 不支持的幽灵传感器实体 (静电除尘、CO2、PM2.5、温度)
+    deprecated_unique_ids = {
+        f"{device_id}_duster_filter_life",
+        f"{device_id}_co2",
+        f"{device_id}_pm25",
+        f"{device_id}_temperature",
+    }
+    for dep_uid in deprecated_unique_ids:
+        if dep_uid in existing_entries:
+            entity_id = existing_entries[dep_uid]
+            _LOGGER.info(
+                "已自动从注册表清理 FF100-Pro 不支持的传感器: %s (%s)",
+                dep_uid,
+                entity_id,
+            )
+            ent_reg.async_remove(entity_id)
 
-        # 判断当前硬件是否支持/安装该传感器
-        is_supported = True
-        if description.available_fn and coordinator.data is not None:
-            is_supported = description.available_fn(coordinator.data)
-
-        if not is_supported:
-            # 硬件未安装/不支持此传感器：如果之前注册过，自动从实体注册表中彻底移除
-            if unique_id in existing_entries:
-                entity_id = existing_entries[unique_id]
-                _LOGGER.info(
-                    "设备未安装或不支持传感器 [%s]，已自动从注册表清理: %s",
-                    description.key,
-                    entity_id,
-                )
-                ent_reg.async_remove(entity_id)
-            continue
-
-        entities.append(BroadAirSensor(coordinator, entry, description))
-
-    async_add_entities(entities)
+    # 2. 注册 FF100-Pro 实际支持的全部传感器实体
+    async_add_entities(
+        BroadAirSensor(coordinator, entry, description)
+        for description in SENSOR_DESCRIPTIONS
+    )
 
 
 class BroadAirSensor(CoordinatorEntity[BroadAirCoordinator], SensorEntity):
@@ -434,7 +317,7 @@ class BroadAirSensor(CoordinatorEntity[BroadAirCoordinator], SensorEntity):
 
     @property
     def available(self) -> bool:
-        """判断当前实体是否可用 (协调器数据正常且通过选配件判断)."""
+        """判断当前实体是否可用 (协调器数据正常)."""
         if not super().available or self.coordinator.data is None:
             return False
 
@@ -456,7 +339,7 @@ class BroadAirSensor(CoordinatorEntity[BroadAirCoordinator], SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        """提取扩展状态属性 (如空气质量等级、滤网额定总时长等)."""
+        """提取扩展状态属性 (如空气质量等级、滤芯额定总时长等)."""
         if self.coordinator.data is None:
             return None
 
@@ -467,7 +350,7 @@ class BroadAirSensor(CoordinatorEntity[BroadAirCoordinator], SensorEntity):
 
     @property
     def icon(self) -> str | None:
-        """根据当前状态动态切换图标 (如故障警告图标、滤网告警图标)."""
+        """根据当前状态动态切换图标 (如故障警告图标、滤芯告警图标)."""
         # 故障状态告警图标动态变化
         if self.entity_description.key == "fault_status" and self.coordinator.data:
             fault_text = get_fault_status_text(self.coordinator.data)
@@ -475,7 +358,7 @@ class BroadAirSensor(CoordinatorEntity[BroadAirCoordinator], SensorEntity):
                 return "mdi:alert-circle"
             return "mdi:check-circle-outline"
 
-        # 滤网剩余寿命严重偏低时切换为警示图标
+        # 滤芯剩余寿命严重偏低时切换为警示图标
         if "filter_life" in self.entity_description.key:
             value = self.native_value
             if isinstance(value, (int, float)):

@@ -3,7 +3,7 @@
 本模块通过 Home Assistant 的 DataUpdateCoordinator 机制，集中管理向远大云端轮询数据的生命周期：
 - 周期性调用 API 接口同步设备最新状态 (开关、档位、风量、传感器、耗材)
 - 捕获鉴权失败异常并抛出 ConfigEntryAuthFailed 以触发 HA 原生重新认证流程
-- 统一分发状态给所有关联的 Fan、Sensor、Switch 和 Button 实体
+- 统一分发状态给所有关联的 Fan、Sensor、Switch、Button 和 Number 实体
 """
 from __future__ import annotations
 

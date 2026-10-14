@@ -4,7 +4,7 @@
 - 动态签名计算 (MD5(AppToken + Nonce + Timestamp))
 - 账号密码登录与会话 Token 获取
 - Token 过期自动重新认证与重试机制 (处理 600/700/800 状态码)
-- 针对 FF100-Pro 设备的状态查询、档位调节、模式切换与滤网重置
+- 针对 FF100-Pro 设备的状态查询、档位调节、模式切换与滤芯重置
 """
 from __future__ import annotations
 
@@ -21,13 +21,14 @@ import aiohttp
 from .const import (
     API_BASE_URL,
     APP_TOKEN,
-    CMD_AUTO_MODE,
     CMD_INDOOR_PURIFICATION,
     CMD_POLL,
     CMD_POWER_OFF,
     CMD_POWER_ON,
     CMD_RESET_COARSE_FILTER,
     CMD_RESET_HEPA_FILTER,
+    CMD_SET_COARSE_CYCLE,
+    CMD_SET_HEPA_CYCLE,
     CMD_SET_SPEED,
     CMD_SLEEP_MODE,
     ENDPOINT_CACHE,
@@ -35,6 +36,10 @@ from .const import (
     ENDPOINT_DEVICES,
     ENDPOINT_LOGIN,
     FAN_SPEED_COUNT,
+    MAX_COARSE_FILTER_LIFE,
+    MAX_HEPA_FILTER_LIFE,
+    MIN_COARSE_FILTER_LIFE,
+    MIN_HEPA_FILTER_LIFE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -353,7 +358,7 @@ class BroadAirApiClient:
             device_id: 设备唯一标识 GUID (eq_guid)
 
         Returns:
-            包含设备开关、档位、风量、传感器数值与滤网寿命的状态字典
+            包含设备开关、档位、风量、传感器数值与滤芯寿命的状态字典
         """
         try:
             return await self._request(
@@ -407,16 +412,6 @@ class BroadAirApiClient:
             {"eq_guid": device_id, "sjx": CMD_SLEEP_MODE, "cs": "1" if on else "0"},
         )
 
-    async def set_auto_mode(self, device_id: str, on: bool) -> dict[str, Any]:
-        """开启或关闭自动调节模式 (sjx: 18, cs: 1=开启, 0=关闭).
-
-        开启后设备将根据粉尘/CO2 等环境指标自动变档。
-        """
-        return await self._request(
-            ENDPOINT_CONTROL,
-            {"eq_guid": device_id, "sjx": CMD_AUTO_MODE, "cs": "1" if on else "0"},
-        )
-
     async def set_indoor_purification(self, device_id: str, on: bool) -> dict[str, Any]:
         """开启或关闭室内净化/循环模式 (sjx: 19, cs: 1=开启, 0=关闭).
 
@@ -428,9 +423,9 @@ class BroadAirApiClient:
         )
 
     async def reset_hepa_filter(self, device_id: str) -> dict[str, Any]:
-        """重置高效 HEPA 滤芯已用计时 (sjx: 8, cs: "1").
+        """重置HEPA高效滤芯已用计时 (sjx: 8, cs: "1").
 
-        在用户更换全新 HEPA 滤芯后调用，重置已用小时数为 0。
+        在用户更换全新 HEPA高效滤芯后调用，重置已用小时数为 0。
         """
         return await self._request(
             ENDPOINT_CONTROL,
@@ -438,13 +433,51 @@ class BroadAirApiClient:
         )
 
     async def reset_coarse_filter(self, device_id: str) -> dict[str, Any]:
-        """重置初效/粗效滤网已用计时 (sjx: 9, cs: "1").
+        """重置粗效滤芯已用计时 (sjx: 9, cs: "1").
 
-        在用户清洗并装回粗效滤网后调用，重置已用小时数为 0。
+        在用户清洗并装回粗效滤芯后调用，重置已用小时数为 0。
         """
         return await self._request(
             ENDPOINT_CONTROL,
             {"eq_guid": device_id, "sjx": CMD_RESET_COARSE_FILTER, "cs": "1"},
+        )
+
+    async def set_hepa_filter_cycle(self, device_id: str, hours: int) -> dict[str, Any]:
+        """设定HEPA高效滤芯更换周期 (sjx: 6, cs: 2000~10000 小时).
+
+        Args:
+            device_id: 设备唯一标识 GUID
+            hours: 设定的滤芯寿命周期 (小时)
+
+        Raises:
+            ValueError: 当周期超出 2000~10000 范围时抛出
+        """
+        if not MIN_HEPA_FILTER_LIFE <= hours <= MAX_HEPA_FILTER_LIFE:
+            raise ValueError(
+                f"HEPA高效滤芯更换周期必须在 {MIN_HEPA_FILTER_LIFE} 到 {MAX_HEPA_FILTER_LIFE} 小时之间，传入值为: {hours}"
+            )
+        return await self._request(
+            ENDPOINT_CONTROL,
+            {"eq_guid": device_id, "sjx": CMD_SET_HEPA_CYCLE, "cs": str(hours)},
+        )
+
+    async def set_coarse_filter_cycle(self, device_id: str, hours: int) -> dict[str, Any]:
+        """设定粗效滤芯清洗周期 (sjx: 7, cs: 168~2160 小时).
+
+        Args:
+            device_id: 设备唯一标识 GUID
+            hours: 设定的滤芯清洗周期 (小时)
+
+        Raises:
+            ValueError: 当周期超出 168~2160 范围时抛出
+        """
+        if not MIN_COARSE_FILTER_LIFE <= hours <= MAX_COARSE_FILTER_LIFE:
+            raise ValueError(
+                f"粗效滤芯清洗周期必须在 {MIN_COARSE_FILTER_LIFE} 到 {MAX_COARSE_FILTER_LIFE} 小时之间，传入值为: {hours}"
+            )
+        return await self._request(
+            ENDPOINT_CONTROL,
+            {"eq_guid": device_id, "sjx": CMD_SET_COARSE_CYCLE, "cs": str(hours)},
         )
 
     async def validate_token(self) -> bool:

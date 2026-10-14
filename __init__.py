@@ -3,7 +3,7 @@
 本模块负责在 Home Assistant 启动时加载和初始化远大新风肺保集成：
 - 初始化 API 客户端并执行开机 Token 有效性检查与自动续期
 - 构建 DataUpdateCoordinator 数据同步协调器
-- 派发并加载各平台实体 (Fan, Sensor, Binary Sensor, Switch, Button)
+- 派发并加载各平台实体 (Fan, Sensor, Binary Sensor, Switch, Button, Number)
 - 管理集成配置的卸载 (Unload) 与热重载 (Reload)
 """
 from __future__ import annotations
@@ -33,6 +33,7 @@ PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.FAN,
+    Platform.NUMBER,
     Platform.SENSOR,
     Platform.SWITCH,
 ]

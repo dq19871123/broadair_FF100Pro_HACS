@@ -54,6 +54,14 @@
         "name": "Reset Primary Filter"
       }
     },
+    "number": {
+      "coarse_filter_cycle": {
+        "name": "Primary Filter Cleaning Cycle"
+      },
+      "hepa_filter_cycle": {
+        "name": "HEPA Filter Replacement Cycle"
+      }
+    },
     "fan": {
       "broadair": {
         "name": "Fresh Air Unit"
@@ -88,18 +96,6 @@
       },
       "coarse_filter_used": {
         "name": "Primary Filter Used Time"
-      },
-      "duster_filter_life": {
-        "name": "Electrostatic Duster Life"
-      },
-      "co2": {
-        "name": "CO2"
-      },
-      "pm25": {
-        "name": "PM2.5"
-      },
-      "temperature": {
-        "name": "Room Temperature"
       }
     }
   }

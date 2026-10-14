@@ -51,16 +51,14 @@ CMD_POWER_ON: Final = "3"
 CMD_SET_SPEED: Final = "4"
 # 设定睡眠模式 (cs: "1" 开启, "0" 关闭)
 CMD_SLEEP_MODE: Final = "5"
-# 设定高效滤芯使用寿命周期 (cs: 2000~10000 小时)
+# 设定HEPA高效滤芯使用寿命周期 (cs: 2000~10000 小时)
 CMD_SET_HEPA_CYCLE: Final = "6"
-# 设定粗效滤网清洗周期 (cs: 168~2160 小时)
+# 设定粗效滤芯清洗周期 (cs: 168~2160 小时)
 CMD_SET_COARSE_CYCLE: Final = "7"
-# 重置高效 HEPA 滤芯已用计时 (cs: "1")
+# 重置HEPA高效滤芯已用计时 (cs: "1")
 CMD_RESET_HEPA_FILTER: Final = "8"
-# 重置初效/粗效滤网已用计时 (cs: "1")
+# 重置粗效滤芯已用计时 (cs: "1")
 CMD_RESET_COARSE_FILTER: Final = "9"
-# 自动调节模式开关 (cs: "1" 开启, "0" 关闭)
-CMD_AUTO_MODE: Final = "18"
 # 室内净化/循环送风模式开关 (cs: "1" 开启, "0" 关闭)
 CMD_INDOOR_PURIFICATION: Final = "19"
 
@@ -71,10 +69,16 @@ CMD_INDOOR_PURIFICATION: Final = "19"
 DEFAULT_SCAN_INTERVAL: Final = timedelta(seconds=30)
 # FF100-Pro 最大风速档位为 3 档 (1:低速, 2:中速, 3:高速)
 FAN_SPEED_COUNT: Final = 3
-# 粗效滤网默认清洗周期 (小时)，若设备上报值 <168 则保底取 500
+# 粗效滤芯默认清洗周期 (小时)，若设备上报值 <168 则保底取 500
 DEFAULT_PRIMARY_FILTER_LIFE: Final = 500
-# 高效 HEPA 滤芯默认更换周期 (小时)，若设备上报值 <2000 则保底取 3000
+# HEPA高效滤芯默认更换周期 (小时)，若设备上报值 <2000 则保底取 3000
 DEFAULT_HEPA_FILTER_LIFE: Final = 3000
+# 粗效滤芯清洗周期取值范围 (小时: 168~2160，即 7天~90天)
+MIN_COARSE_FILTER_LIFE: Final = 168
+MAX_COARSE_FILTER_LIFE: Final = 2160
+# HEPA高效滤芯更换周期取值范围 (小时: 2000~10000)
+MIN_HEPA_FILTER_LIFE: Final = 2000
+MAX_HEPA_FILTER_LIFE: Final = 10000
 
 # -----------------------------------------------------------------------------
 # 配置项键名 (存储于 Home Assistant ConfigEntry 中)
@@ -100,88 +104,32 @@ FIELD_RUNNING_GEAR: Final = "RUNNING_GEAR"
 FIELD_AIR_VOLUME: Final = "AIR_VOLUME"
 # 睡眠模式 ("1": 开启, "0": 关闭)
 FIELD_SLEEP_MODE: Final = "FB_SLEEPMODEL_ON"
-# 自动调节模式 ("1": 开启, "0": 关闭)
-FIELD_AUTO_MODE: Final = "FB_AUTOMODEL_ON"
 # 室内净化循环模式 ("1": 开启, "0": 关闭)
 FIELD_SUPPLY_AIR_MODE: Final = "SUPPLY_AIR_MODE"
 # 室内净化模式硬件支持配置 ("1": 支持, "0": 不支持)
 FIELD_SUPPLY_AIR_CONFIG: Final = "Supply_Air_Mode_Configuration"
 # 故障简码 ("00": 正常)
 FIELD_FAULT: Final = "FAULT"
-# 完整故障描述列表 (逗号分隔文本，如 "PM2.5故障,新风机故障")
+# 完整故障描述列表 (逗号分隔文本，如 "粗效清洗提醒,新风机故障")
 FIELD_ALL_FAULT: Final = "ALLFAULT"
 # 异常提醒标识
 FIELD_EXCEPTION_REMINDER: Final = "EXCEPTION_REMINDER"
 
 # -----------------------------------------------------------------------------
-# 滤网耗材监控字段
+# 滤芯耗材监控字段
 # -----------------------------------------------------------------------------
-# 高效 HEPA 滤芯总寿命周期 (小时)
+# HEPA高效滤芯总寿命周期 (小时)
 FIELD_HEPA_LIFE_CYCLE: Final = "EFFICIENT_LIFE_CYCLE"
-# 高效 HEPA 滤芯已使用时长 (小时)
+# HEPA高效滤芯已使用时长 (小时)
 FIELD_HEPA_USED_TIME: Final = "EFFICIENT_USED_TIME"
-# 高效 HEPA 滤芯清零时间戳
+# HEPA高效滤芯清零时间戳
 FIELD_HEPA_TIME_CLEARING: Final = "EFFICIENT_TIME_CLEARING"
-# 粗效/初效滤网清洗周期 (小时)
+# 粗效滤芯清洗周期 (小时)
 FIELD_PRIMARY_CLEANING_CYCLE: Final = "PRIMARY_CLEANING_CYCLE"
-# 粗效/初效滤网已使用时长 (小时)
+# 粗效滤芯已使用时长 (小时)
 FIELD_COARSE_USED_TIME: Final = "COARSE_USED_TIME"
-# 粗效滤网清零时间戳
+# 粗效滤芯清零时间戳
 FIELD_COARSE_TIME_CLEARING: Final = "COARSE_TIME_CLEARING"
-# 静电除尘器清洗周期 (小时)
-FIELD_DUSTER_CLEANING_CYCLE: Final = "DUSTER_CLEANING_CYCLE"
-# 静电除尘器已使用时长 (小时)
-FIELD_DUSTER_USED_TIME: Final = "DUSTER_USED_TIME"
-# 静电除尘器清零时间戳
-FIELD_DUSTER_TIME_CLEARING: Final = "DUSTER_TIME_CLEARING"
-
-# -----------------------------------------------------------------------------
-# 空气质量与环境传感器字段
-# -----------------------------------------------------------------------------
-# 二氧化碳浓度 (ppm)
-FIELD_CO2: Final = "CO2_CONCENTRATION"
-# PM2.5 激光粉尘浓度 (μg/m³，FF100-Pro 使用此字段，65535 为无效哨兵值)
-FIELD_PM_2_5_DUST: Final = "PM_2_5_DUST_CONCENTRATION"
-# 备用 PM2.5 字段
-FIELD_PM_2_5: Final = "PM_2_5"
-# 室内温度 (原始数值为实际温度的 10 倍，如 250 代表 25.0 ℃)
-FIELD_ROOM_TEMP: Final = "ROOM_TEMPERATURE"
-
-# -----------------------------------------------------------------------------
-# 硬件选配件安装状态标识 ("1": 已安装, "0": 未安装)
-# -----------------------------------------------------------------------------
-# 是否安装 CO2 检测模块
-FIELD_CO2_MODULE: Final = "CO2_MODULE_ACCESSORIES"
-# 是否安装 PM2.5 粉尘检测模块
-FIELD_DUST_MODULE: Final = "DUST_MODULE_ACCESSORIES"
-# 是否安装温度检测模块
-FIELD_TEMP_MODULE: Final = "TEMPERATURE_MODULE_ACCESSORIES"
-
-# -----------------------------------------------------------------------------
-# 模块通信故障标志
-# -----------------------------------------------------------------------------
-FIELD_DUST_MODULE_FAILURE: Final = "DUST_MODULE_COMMUNICATION_FAILURE"
-FIELD_TEMP_MODULE_FAILURE: Final = "TEMPERATURE_MODULE_FAILURE"
-
-# -----------------------------------------------------------------------------
-# 其他参数设置字段
-# -----------------------------------------------------------------------------
-# 粉尘调节下限值 (5~100)
-FIELD_DUST_REGULATION: Final = "DUST_REGULATION_VALUE"
-# 粉尘调节上限值 (5~200)
-FIELD_DUST_REGULATION_UP: Final = "DUST_REGULATION_VALUE1"
-# 粉尘超标报警阈值
-FIELD_DUST_ALARM: Final = "DUST_ALARM_VALUE"
-# CO2 调节设定值 (800~4800)
-FIELD_CO2_ADJUSTMENT: Final = "CO2_ADJUSTMENT_VALUE"
-# CO2 报警阈值 (1000~2000)
-FIELD_CO2_ALARM: Final = "CO2_ALARM_VALUE"
-# 人离开自动关机时间 (0.5~120 小时)
-FIELD_MAN_OFF_TIME: Final = "MAN_OFF_TIME"
-# 功能开关位掩码 (包含人离关机、粉尘调节、CO2调节开关状态)
-FIELD_OPENING_FUNCTION: Final = "OPENING_FUNCTION"
-# 机型分类标识 ("0" 支持人离关机等特定高级设置)
-FIELD_TYPE_SELECTION: Final = "TYPE_SELECTION"
 
 # -----------------------------------------------------------------------------
 # 设备列表响应字段

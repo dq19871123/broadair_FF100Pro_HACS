@@ -51,7 +51,15 @@
         "name": "重置HEPA高效滤芯计时"
       },
       "reset_coarse_filter": {
-        "name": "重置粗效滤网计时"
+        "name": "重置粗效滤芯计时"
+      }
+    },
+    "number": {
+      "coarse_filter_cycle": {
+        "name": "粗效滤芯清洗周期"
+      },
+      "hepa_filter_cycle": {
+        "name": "HEPA高效滤芯更换周期"
       }
     },
     "fan": {
@@ -88,28 +96,16 @@
         "name": "故障状态"
       },
       "hepa_filter_life": {
-        "name": "HEPA滤芯剩余寿命"
+        "name": "HEPA高效滤芯剩余寿命"
       },
       "hepa_filter_used": {
-        "name": "HEPA滤芯已用时间"
+        "name": "HEPA高效滤芯已用时间"
       },
       "coarse_filter_life": {
-        "name": "粗效滤网剩余寿命"
+        "name": "粗效滤芯剩余寿命"
       },
       "coarse_filter_used": {
-        "name": "粗效滤网已用时间"
-      },
-      "duster_filter_life": {
-        "name": "静电除尘器寿命"
-      },
-      "co2": {
-        "name": "二氧化碳浓度"
-      },
-      "pm25": {
-        "name": "PM2.5浓度"
-      },
-      "temperature": {
-        "name": "室内温度"
+        "name": "粗效滤芯已用时间"
       }
     }
   }
