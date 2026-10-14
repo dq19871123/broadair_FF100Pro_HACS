@@ -81,9 +81,10 @@ def _create_ssl_context() -> ssl.SSLContext:
     """创建自定义 SSL 上下文.
 
     远大云端服务器 (broadair.remotcon.mobi:8201) 使用的 SSL 证书链在部分 Linux 环境下
-    可能无法通过系统 CA 严格校验，因此关闭证书主机名校验以保障通信稳定性。
+    可能无法通过系统 CA 严格校验，因此使用非阻塞客户端 SSLContext 并关闭校验，
+    既保障网络通信稳定性，又彻底避免在事件循环中触发 load_default_certs 的阻塞式磁盘 I/O。
     """
-    ssl_context = ssl.create_default_context()
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
     return ssl_context
